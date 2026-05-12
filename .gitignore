@@ -23,7 +23,6 @@ build/
 # claude
 .claude
 claude*
-CLAUDE.md
 
 # Ícones (podem conter marca da empresa)
 *.ico
