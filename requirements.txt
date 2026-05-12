@@ -1,0 +1,6 @@
+customtkinter
+keyring
+requests
+pandas
+openpyxl
+python-dotenv

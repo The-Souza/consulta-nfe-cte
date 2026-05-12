@@ -1,0 +1,29 @@
+# Ambiente virtual Python
+.venv/
+
+# Cache do Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Credenciais salvas localmente (contém e-mail do usuário)
+config.json
+
+# Variáveis de ambiente (contém URLs e dados internos da empresa)
+.env
+
+# Arquivos de saída gerados pelo script
+*.xlsx
+
+# PyInstaller
+dist/
+build/
+*.spec
+
+# claude
+.claude
+claude*
+CLAUDE.md
+
+# Ícones (podem conter marca da empresa)
+*.ico
