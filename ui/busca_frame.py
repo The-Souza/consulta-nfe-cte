@@ -6,6 +6,7 @@ import customtkinter as ctk
 import pandas as pd
 
 import api
+from ui.widgets.chip import fazer_chip
 
 # (header_text, width_px) — definição única usada em header e linhas
 _COLS = [("Nº", 50), ("NF-e", 80), ("CT-e", 100), ("Status", 160)]
@@ -120,9 +121,9 @@ class BuscaFrame(ctk.CTkFrame):
         stat = ctk.CTkFrame(bar, fg_color="transparent")
         stat.pack(side="left")
 
-        self.chip_ok  = self._fazer_chip(stat, "#4CAF50", "#1a3a1a")
-        self.chip_sem = self._fazer_chip(stat, "#FFC107", "#3a3000")
-        self.chip_nao = self._fazer_chip(stat, "#F44336", "#3a0f0f")
+        self.chip_ok  = fazer_chip(stat, "#4CAF50", "#1a3a1a")
+        self.chip_sem = fazer_chip(stat, "#FFC107", "#3a3000")
+        self.chip_nao = fazer_chip(stat, "#F44336", "#3a0f0f")
         self._reset_chips()
 
         self.btn_exportar = ctk.CTkButton(
@@ -144,13 +145,6 @@ class BuscaFrame(ctk.CTkFrame):
     # ------------------------------------------------------------------
     # HELPERS VISUAIS
     # ------------------------------------------------------------------
-
-    def _fazer_chip(self, parent, cor_texto: str, cor_fundo: str) -> ctk.CTkLabel:
-        frame = ctk.CTkFrame(parent, fg_color=cor_fundo, corner_radius=20)
-        frame.pack(side="left", padx=(0, 8))
-        lbl = ctk.CTkLabel(frame, text="", text_color=cor_texto, font=ctk.CTkFont(size=11))
-        lbl.pack(padx=12, pady=3)
-        return lbl
 
     def _reset_chips(self) -> None:
         self.chip_ok.configure(text="✅  0  Com CT-e")

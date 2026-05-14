@@ -10,6 +10,7 @@ import customtkinter as ctk
 
 import api
 import ocr
+from ui.widgets.chip import fazer_chip
 
 _COLS_R = [("Nº", 50), ("Arquivo original", 280), ("NF-e detectada", 140), ("Status", 150)]
 _COLS_U = [("Nº", 50), ("NF-e", 120), ("Status", 180)]
@@ -134,9 +135,9 @@ class UploadFrame(ctk.CTkFrame):
         # Chips — lado esquerdo
         stat = ctk.CTkFrame(bar, fg_color="transparent")
         stat.pack(side="left")
-        self.chip_ok  = self._fazer_chip(stat, "#4CAF50", "#1a3a1a")
-        self.chip_dup = self._fazer_chip(stat, "#FFC107", "#3a3000")
-        self.chip_nao = self._fazer_chip(stat, "#F44336", "#3a0f0f")
+        self.chip_ok  = fazer_chip(stat, "#4CAF50", "#1a3a1a")
+        self.chip_dup = fazer_chip(stat, "#FFC107", "#3a3000")
+        self.chip_nao = fazer_chip(stat, "#F44336", "#3a0f0f")
         self._reset_chips_renomear()
 
         # Controles de upload — lado direito (aparece após renomear)
@@ -169,13 +170,6 @@ class UploadFrame(ctk.CTkFrame):
     # ------------------------------------------------------------------
     # HELPERS VISUAIS
     # ------------------------------------------------------------------
-
-    def _fazer_chip(self, parent, cor_texto: str, cor_fundo: str) -> ctk.CTkLabel:
-        frame = ctk.CTkFrame(parent, fg_color=cor_fundo, corner_radius=20)
-        frame.pack(side="left", padx=(0, 8))
-        lbl = ctk.CTkLabel(frame, text="", text_color=cor_texto, font=ctk.CTkFont(size=11))
-        lbl.pack(padx=12, pady=3)
-        return lbl
 
     def _reset_chips_renomear(self) -> None:
         self._cnt_ok = self._cnt_dup = self._cnt_nao = 0
