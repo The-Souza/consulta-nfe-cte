@@ -5,6 +5,7 @@ import customtkinter as ctk
 import pandas as pd
 
 from ui.widgets.chip import fazer_chip
+from ui.widgets.historico import PainelHistorico
 from ui.widgets.tabela import fazer_cabecalho, inserir_linha, limpar_scroll
 from ui.workers.busca import BuscaWorker
 
@@ -17,11 +18,9 @@ class BuscaFrame(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent")
         self._session      = session
         self._on_logout    = on_logout
-        self._resultados   = []
-        self._historico    = []
-        self._buscando     = False
-        self._hist_visible = False
-        self._stop_event   = threading.Event()
+        self._resultados = []
+        self._buscando   = False
+        self._stop_event = threading.Event()
         self._row_count    = 0
         self._build(usuario_nome)
 
@@ -124,14 +123,7 @@ class BuscaFrame(ctk.CTkFrame):
         self.btn_exportar.pack(side="right")
 
     def _build_historico(self, main: ctk.CTkFrame) -> None:
-        self.btn_hist_toggle = ctk.CTkButton(
-            main, text="▶  Histórico (0)",
-            fg_color="transparent", hover_color="#444",
-            anchor="w", height=28,
-            command=self._toggle_historico,
-        )
-        self.btn_hist_toggle.pack(fill="x", pady=(10, 0))
-        self.hist_scroll = ctk.CTkScrollableFrame(main, height=88)
+        self._hist = PainelHistorico(main, on_restaurar=self._restaurar)
 
     # ------------------------------------------------------------------
     # HELPERS VISUAIS
@@ -294,31 +286,7 @@ class BuscaFrame(ctk.CTkFrame):
     def _add_historico(self, inicio: int, fim: int, resultados: list) -> None:
         hora  = datetime.now().strftime("%H:%M")
         label = f"{hora}  ·  NF-e {inicio} → {fim}  ({len(resultados)} itens)"
-        self._historico.insert(0, {"label": label, "inicio": inicio, "fim": fim, "resultados": resultados})
-        prefix = "▼" if self._hist_visible else "▶"
-        self.btn_hist_toggle.configure(text=f"{prefix}  Histórico ({len(self._historico)})")
-        self._rebuild_historico()
-
-    def _toggle_historico(self) -> None:
-        self._hist_visible = not self._hist_visible
-        prefix = "▼" if self._hist_visible else "▶"
-        self.btn_hist_toggle.configure(text=f"{prefix}  Histórico ({len(self._historico)})")
-        if self._hist_visible:
-            self.hist_scroll.pack(fill="x", pady=(2, 0))
-        else:
-            self.hist_scroll.pack_forget()
-
-    def _rebuild_historico(self) -> None:
-        for w in self.hist_scroll.winfo_children():
-            w.destroy()
-        for entry in self._historico:
-            ctk.CTkButton(
-                self.hist_scroll,
-                text=entry["label"],
-                fg_color="transparent", hover_color="#3a3a3a",
-                anchor="w", height=28,
-                command=lambda e=entry: self._restaurar(e),
-            ).pack(fill="x", pady=1)
+        self._hist.adicionar({"label": label, "inicio": inicio, "fim": fim, "resultados": resultados})
 
     def _restaurar(self, entry: dict) -> None:
         if self._buscando:

@@ -5,6 +5,7 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 from ui.widgets.chip import fazer_chip
+from ui.widgets.historico import PainelHistorico
 from ui.widgets.tabela import fazer_cabecalho, inserir_linha, limpar_scroll
 from ui.workers.renomear import RenomearWorker
 from ui.workers.upload import UploadWorker
@@ -21,8 +22,6 @@ class UploadFrame(ctk.CTkFrame):
         self._stop_event = threading.Event()
         self._rodando    = False
         self._etapa      = "renomear"
-        self._historico: list[dict] = []
-        self._hist_visible = False
         self._cnt_ok = self._cnt_dup = self._cnt_nao = 0
         self._rows: list = []
         self._pasta_output = ""
@@ -141,14 +140,7 @@ class UploadFrame(ctk.CTkFrame):
         self._btn_upload_hover = self.btn_upload.cget("hover_color")
 
     def _build_historico(self, main: ctk.CTkFrame) -> None:
-        self.btn_hist_toggle = ctk.CTkButton(
-            main, text="▶  Histórico (0)",
-            fg_color="transparent", hover_color="#444",
-            anchor="w", height=28,
-            command=self._toggle_historico,
-        )
-        self.btn_hist_toggle.pack(fill="x", pady=(10, 0))
-        self.hist_scroll = ctk.CTkScrollableFrame(main, height=88)
+        self._hist = PainelHistorico(main, on_restaurar=self._restaurar)
 
     # ------------------------------------------------------------------
     # HELPERS VISUAIS
@@ -373,34 +365,10 @@ class UploadFrame(ctk.CTkFrame):
 
     def _add_historico(self, tipo: str, label: str, pasta: str, data_str: str, rows: list) -> None:
         hora = datetime.now().strftime("%H:%M")
-        self._historico.insert(0, {
+        self._hist.adicionar({
             "tipo": tipo, "label": f"{hora}  ·  {label}",
             "pasta": pasta, "data_str": data_str, "rows": rows,
         })
-        prefix = "▼" if self._hist_visible else "▶"
-        self.btn_hist_toggle.configure(text=f"{prefix}  Histórico ({len(self._historico)})")
-        self._rebuild_historico()
-
-    def _toggle_historico(self) -> None:
-        self._hist_visible = not self._hist_visible
-        prefix = "▼" if self._hist_visible else "▶"
-        self.btn_hist_toggle.configure(text=f"{prefix}  Histórico ({len(self._historico)})")
-        if self._hist_visible:
-            self.hist_scroll.pack(fill="x", pady=(2, 0))
-        else:
-            self.hist_scroll.pack_forget()
-
-    def _rebuild_historico(self) -> None:
-        for w in self.hist_scroll.winfo_children():
-            w.destroy()
-        for entry in self._historico:
-            ctk.CTkButton(
-                self.hist_scroll,
-                text=entry["label"],
-                fg_color="transparent", hover_color="#3a3a3a",
-                anchor="w", height=28,
-                command=lambda e=entry: self._restaurar(e),
-            ).pack(fill="x", pady=1)
 
     def _restaurar(self, entry: dict) -> None:
         if self._rodando:
