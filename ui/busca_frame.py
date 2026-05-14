@@ -7,6 +7,9 @@ import pandas as pd
 
 import api
 
+# (header_text, width_px) — definição única usada em header e linhas
+_COLS = [("Nº", 50), ("NF-e", 80), ("CT-e", 100), ("Status", 160)]
+
 
 class BuscaFrame(ctk.CTkFrame):
     def __init__(self, parent, session, usuario_nome, on_logout):
@@ -100,20 +103,12 @@ class BuscaFrame(ctk.CTkFrame):
         hdr = ctk.CTkFrame(main, height=36)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-
-        for txt, w, anch, lpad in [
-            ("Nº",     65,  "center", 0),
-            ("NF-e",   70,  "center", 0),
-            ("CT-e",   100, "center", 0),
-            ("Status", 65,  "center", 0),
-        ]:
+        ctk.CTkFrame(hdr, width=8, fg_color="transparent").pack(side="left")
+        for txt, w in _COLS:
             cell = ctk.CTkFrame(hdr, width=w, fg_color="transparent")
-            cell.pack(side="left", padx=1)
+            cell.pack(side="left")
             cell.pack_propagate(False)
-            ctk.CTkLabel(
-                cell, text=txt,
-                font=ctk.CTkFont(weight="bold"), anchor=anch,
-            ).pack(fill="both", expand=True, padx=(lpad, 0))
+            ctk.CTkLabel(cell, text=txt, font=ctk.CTkFont(weight="bold"), anchor="center").pack(fill="both", expand=True)
 
         self.scroll = ctk.CTkScrollableFrame(main)
         self.scroll.pack(fill="both", expand=True, pady=(2, 6))
@@ -153,8 +148,8 @@ class BuscaFrame(ctk.CTkFrame):
     def _fazer_chip(self, parent, cor_texto: str, cor_fundo: str) -> ctk.CTkLabel:
         frame = ctk.CTkFrame(parent, fg_color=cor_fundo, corner_radius=20)
         frame.pack(side="left", padx=(0, 8))
-        lbl = ctk.CTkLabel(frame, text="", text_color=cor_texto, font=ctk.CTkFont(size=12))
-        lbl.pack(padx=12, pady=5)
+        lbl = ctk.CTkLabel(frame, text="", text_color=cor_texto, font=ctk.CTkFont(size=11))
+        lbl.pack(padx=12, pady=3)
         return lbl
 
     def _reset_chips(self) -> None:
@@ -189,20 +184,23 @@ class BuscaFrame(ctk.CTkFrame):
         linha.pack(fill="x", pady=0)
         linha.pack_propagate(False)
 
-        for txt, w in [(str(self._row_count), 50), (str(r["NF-e"]), 80), (r["CT-e"], 100)]:
+        for (_, w), txt in zip(_COLS[:3], [str(self._row_count), str(r["NF-e"]), r["CT-e"]]):
             cell = ctk.CTkFrame(linha, width=w, height=30, fg_color="transparent")
-            cell.pack(side="left", padx=1)
+            cell.pack(side="left")
             cell.pack_propagate(False)
             ctk.CTkLabel(cell, text=txt, anchor="center", font=mono).pack(fill="both", expand=True)
 
+        _, status_w = _COLS[3]
+        cell = ctk.CTkFrame(linha, width=status_w, height=30, fg_color="transparent")
+        cell.pack(side="left")
+        cell.pack_propagate(False)
         if cor_fg:
-            badge = ctk.CTkFrame(linha, fg_color=cor_bg_badge, corner_radius=8)
-            badge.pack(side="left", padx=8, pady=5)
-            ctk.CTkLabel(
-                badge, text=r["Status"], text_color=cor_fg, font=ctk.CTkFont(size=11)
-            ).pack(padx=10, pady=2)
+            badge = ctk.CTkFrame(cell, fg_color=cor_bg_badge, corner_radius=9, height=18)
+            badge.place(relx=0.5, rely=0.5, anchor="center")
+            ctk.CTkLabel(badge, text=r["Status"], text_color=cor_fg,
+                        font=ctk.CTkFont(size=10), height=20).pack(side="left", padx=8, pady=0)
         else:
-            ctk.CTkLabel(linha, text=r["Status"], width=120, anchor="center").pack(side="left", padx=1)
+            ctk.CTkLabel(cell, text=r["Status"], anchor="center").pack(fill="both", expand=True)
 
     def _limpar_tabela(self) -> None:
         for w in self.scroll.winfo_children():
@@ -266,8 +264,8 @@ class BuscaFrame(ctk.CTkFrame):
 
             try:
                 cte, status = api.consultar_canhoto(self._session, nfe)
-            except Exception:
-                cte, status = "-", "Erro"
+            except Exception as e:
+                cte, status = "-", f"❌ {api.erro_amigavel(e)}"
 
             r = {"NF-e": nfe, "CT-e": cte, "Status": status}
             self._resultados.append(r)

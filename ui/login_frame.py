@@ -90,7 +90,7 @@ class LoginFrame(ctk.CTkFrame):
         except ValueError as e:
             self.after(0, self._set_erro, str(e))
         except Exception as e:
-            self.after(0, self._set_erro, f"Erro de conexão: {e}")
+            self.after(0, self._set_erro, api.erro_amigavel(e))
 
     def _set_erro(self, msg: str) -> None:
         self.lbl_erro.configure(text=msg)
