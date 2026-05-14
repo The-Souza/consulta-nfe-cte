@@ -1,17 +1,13 @@
 import os
-import shutil
 import threading
-import time
 from datetime import datetime
-from pathlib import Path
 from tkinter import filedialog
 
 import customtkinter as ctk
-
-import api
-import ocr
 from ui.widgets.chip import fazer_chip
 from ui.widgets.tabela import fazer_cabecalho, inserir_linha, limpar_scroll
+from ui.workers.renomear import RenomearWorker
+from ui.workers.upload import UploadWorker
 
 _COLS_R = [("Nº", 50), ("Arquivo original", 280), ("NF-e detectada", 140), ("Status", 150)]
 _COLS_U = [("Nº", 50), ("NF-e", 120), ("Status", 180)]
@@ -260,43 +256,15 @@ class UploadFrame(ctk.CTkFrame):
             fg_color=("#c0392b", "#7b241c"), hover_color=("#a93226", "#641e16"),
             command=self._cancelar,
         )
-        threading.Thread(target=self._renomear_thread, args=(pasta,), daemon=True).start()
-
-    def _renomear_thread(self, pasta: str) -> None:
-        output = Path(pasta) / "renamed"
-        output.mkdir(exist_ok=True)
-
-        files = [f for f in os.listdir(pasta) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
-        total = len(files)
-        t0 = time.time()
-
-        for i, arquivo in enumerate(files):
-            if self._stop_event.is_set():
-                self.after(0, lambda: self._finalizar_renomear(cancelado=True))
-                return
-
-            path = os.path.join(pasta, arquivo)
-            nfe    = None
-            status = "erro"
-            try:
-                nfe = ocr.process_image(path)
-                if nfe is None:
-                    status = "nao_encontrada"
-                else:
-                    novo = output / f"{nfe}.jpg"
-                    if novo.exists():
-                        status = "duplicata"
-                    else:
-                        shutil.move(str(path), str(novo))
-                        status = "ok"
-            except Exception:
-                status = "erro"
-
-            prog    = (i + 1) / total
-            elapsed = time.time() - t0
-            self.after(0, self._atualizar_renomear, arquivo, nfe, status, prog, i + 1, total, elapsed)
-
-        self.after(0, lambda: self._finalizar_renomear(cancelado=False, output=str(output)))
+        worker = RenomearWorker(
+            pasta=pasta,
+            stop_event=self._stop_event,
+            after_fn=self.after,
+            on_update=self._atualizar_renomear,
+            on_done=lambda output: self._finalizar_renomear(cancelado=False, output=output),
+            on_cancel=lambda: self._finalizar_renomear(cancelado=True),
+        )
+        threading.Thread(target=worker.run, daemon=True).start()
 
     def _atualizar_renomear(self, arquivo: str, nfe: str | None, status: str, prog: float, atual: int, total: int, elapsed: float) -> None:
         self.progressbar.set(prog)
@@ -361,50 +329,17 @@ class UploadFrame(ctk.CTkFrame):
             fg_color=("#c0392b", "#7b241c"), hover_color=("#a93226", "#641e16"),
             command=self._cancelar,
         )
-        threading.Thread(target=self._upload_thread, args=(pasta, data_lote, data_str), daemon=True).start()
-
-    def _upload_thread(self, pasta: str, data_lote: str, data_str: str) -> None:
-        pendente_dir = Path(pasta).parent / "pendentes"
-        nao_pend_dir = Path(pasta).parent / "nao_pendentes"
-        pendente_dir.mkdir(exist_ok=True)
-        nao_pend_dir.mkdir(exist_ok=True)
-
-        files = [f for f in os.listdir(pasta) if f.lower().endswith(".jpg")]
-        total = len(files)
-        t0 = time.time()
-
-        for i, arquivo in enumerate(files):
-            if self._stop_event.is_set():
-                self.after(0, lambda: self._finalizar_upload(cancelado=True, pasta=pasta, data_str=data_str))
-                return
-
-            nfe  = Path(arquivo).stem
-            path = Path(pasta) / arquivo
-
-            try:
-                oid, status_api = api.consultar_canhoto_upload(self._session, nfe)
-
-                if oid is None:
-                    status = "❌ Não encontrada"
-                elif status_api != "PENDENTE":
-                    shutil.move(str(path), str(nao_pend_dir / arquivo))
-                    status = f"⚠ {status_api}"
-                else:
-                    full_data = api.get_canhoto_completo(self._session, oid)
-                    ok, err = api.upload_canhoto(self._session, nfe, path, full_data, data_lote)
-                    if ok:
-                        shutil.move(str(path), str(pendente_dir / arquivo))
-                        status = "✅ Enviado"
-                    else:
-                        status = f"❌ {err}"
-            except Exception as e:
-                status = f"❌ {api.erro_amigavel(e)}"
-
-            prog    = (i + 1) / total
-            elapsed = time.time() - t0
-            self.after(0, self._atualizar_upload, nfe, status, prog, i + 1, total, elapsed)
-
-        self.after(0, lambda: self._finalizar_upload(cancelado=False, pasta=pasta, data_str=data_str))
+        worker = UploadWorker(
+            session=self._session,
+            pasta=pasta,
+            data_lote=data_lote,
+            stop_event=self._stop_event,
+            after_fn=self.after,
+            on_update=self._atualizar_upload,
+            on_done=lambda: self._finalizar_upload(cancelado=False, pasta=pasta, data_str=data_str),
+            on_cancel=lambda: self._finalizar_upload(cancelado=True),
+        )
+        threading.Thread(target=worker.run, daemon=True).start()
 
     def _atualizar_upload(self, nfe: str, status: str, prog: float, atual: int, total: int, elapsed: float) -> None:
         self.progressbar.set(prog)

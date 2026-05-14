@@ -1,13 +1,12 @@
 import threading
-import time
 from datetime import datetime
 
 import customtkinter as ctk
 import pandas as pd
 
-import api
 from ui.widgets.chip import fazer_chip
 from ui.widgets.tabela import fazer_cabecalho, inserir_linha, limpar_scroll
+from ui.workers.busca import BuscaWorker
 
 # (header_text, width_px) — definição única usada em header e linhas
 _COLS = [("Nº", 50), ("NF-e", 80), ("CT-e", 100), ("Status", 160)]
@@ -205,45 +204,27 @@ class BuscaFrame(ctk.CTkFrame):
             command=self._cancelar,
         )
 
-        threading.Thread(target=self._buscar_thread, args=(inicio, fim), daemon=True).start()
+        worker = BuscaWorker(
+            session=self._session,
+            inicio=inicio,
+            fim=fim,
+            stop_event=self._stop_event,
+            after_fn=self.after,
+            on_update=self._adicionar_linha,
+            on_done=lambda: self._finalizar(inicio, fim, cancelado=False),
+            on_cancel=lambda: self._finalizar(inicio, fim, cancelado=True),
+        )
+        threading.Thread(target=worker.run, daemon=True).start()
 
     def _cancelar(self) -> None:
         self._stop_event.set()
-
-    # ------------------------------------------------------------------
-    # THREAD DE BUSCA
-    # ------------------------------------------------------------------
-
-    def _buscar_thread(self, inicio: int, fim: int) -> None:
-        total = fim - inicio + 1
-        t0    = time.time()
-
-        for i, nfe in enumerate(range(inicio, fim + 1)):
-            if self._stop_event.is_set():
-                self.after(0, lambda: self._finalizar(inicio, fim, cancelado=True))
-                return
-
-            try:
-                cte, status = api.consultar_canhoto(self._session, nfe)
-            except Exception as e:
-                cte, status = "-", f"❌ {api.erro_amigavel(e)}"
-
-            r = {"NF-e": nfe, "CT-e": cte, "Status": status}
-            self._resultados.append(r)
-
-            prog    = (i + 1) / total
-            elapsed = time.time() - t0
-            self.after(0, self._adicionar_linha, r, prog, i + 1, total, elapsed)
-
-            time.sleep(0.05)
-
-        self.after(0, lambda: self._finalizar(inicio, fim, cancelado=False))
 
     # ------------------------------------------------------------------
     # ATUALIZAÇÃO DA TABELA
     # ------------------------------------------------------------------
 
     def _adicionar_linha(self, r: dict, prog: float, atual: int, total: int, elapsed: float) -> None:
+        self._resultados.append(r)
         self.progressbar.set(prog)
         m, s = divmod(int(elapsed), 60)
         self.lbl_progresso.configure(text=f"NF-e {r['NF-e']}  ({atual}/{total})  {m:02d}:{s:02d}")
