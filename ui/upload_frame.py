@@ -11,6 +11,7 @@ import customtkinter as ctk
 import api
 import ocr
 from ui.widgets.chip import fazer_chip
+from ui.widgets.tabela import fazer_cabecalho, inserir_linha, limpar_scroll
 
 _COLS_R = [("Nº", 50), ("Arquivo original", 280), ("NF-e detectada", 140), ("Status", 150)]
 _COLS_U = [("Nº", 50), ("NF-e", 120), ("Status", 180)]
@@ -104,26 +105,12 @@ class UploadFrame(ctk.CTkFrame):
         self.progressbar.set(0)
 
     def _build_tabela(self, main: ctk.CTkFrame) -> None:
-        # Container fixo — mantém a posição do header no layout.
-        # Os dois headers trocam dentro dele sem precisar de before=.
+        # hdr_slot mantém posição fixa; os dois headers trocam dentro dele.
         hdr_slot = ctk.CTkFrame(main, fg_color="transparent")
         hdr_slot.pack(fill="x")
-
-        def _hdr(cols):
-            f = ctk.CTkFrame(hdr_slot, height=36)
-            f.pack_propagate(False)
-            ctk.CTkFrame(f, width=8, fg_color="transparent").pack(side="left")
-            for txt, w in cols:
-                cell = ctk.CTkFrame(f, width=w, fg_color="transparent")
-                cell.pack(side="left")
-                cell.pack_propagate(False)
-                ctk.CTkLabel(cell, text=txt, font=ctk.CTkFont(weight="bold"), anchor="center").pack(fill="both", expand=True)
-            return f
-
-        self.hdr_renomear = _hdr(_COLS_R)
+        self.hdr_renomear = fazer_cabecalho(hdr_slot, _COLS_R)
         self.hdr_renomear.pack(fill="x")
-        self.hdr_upload = _hdr(_COLS_U)
-
+        self.hdr_upload = fazer_cabecalho(hdr_slot, _COLS_U)
         self.scroll = ctk.CTkScrollableFrame(main)
         self.scroll.pack(fill="both", expand=True, pady=(2, 6))
         self._row_count = 0
@@ -194,41 +181,20 @@ class UploadFrame(ctk.CTkFrame):
         self._reset_chips_renomear()
 
     def _limpar_tabela(self) -> None:
-        for w in self.scroll.winfo_children():
-            w.destroy()
-        self.scroll._parent_canvas.yview_moveto(0)
+        limpar_scroll(self.scroll)
         self._row_count = 0
 
     def _inserir_linha_renomear(self, arquivo: str, nfe: str | None, status: str) -> None:
         self._row_count += 1
-        row_bg = "#252525" if self._row_count % 2 == 0 else "transparent"
-        mono   = ctk.CTkFont(family="Consolas", size=12)
-        linha  = ctk.CTkFrame(self.scroll, height=30, fg_color=row_bg)
-        linha.pack(fill="x")
-        linha.pack_propagate(False)
-
-        for (_, w), txt in zip(_COLS_R[:3], [str(self._row_count), arquivo, nfe or "-"]):
-            cell = ctk.CTkFrame(linha, width=w, height=30, fg_color="transparent")
-            cell.pack(side="left")
-            cell.pack_propagate(False)
-            ctk.CTkLabel(cell, text=txt, anchor="center", font=mono).pack(fill="both", expand=True)
-
         _COR = {
-            "ok":             ("✅ Renomeada",  "#4CAF50", "#1a3a1a"),
-            "duplicata":      ("⚠ Duplicata",   "#FFC107", "#3a3000"),
-            "nao_encontrada": ("❌ Não lida",   "#F44336", "#3a0f0f"),
-            "erro":           ("❌ Erro",        "#F44336", "#3a0f0f"),
+            "ok":             ("✅ Renomeada", "#4CAF50", "#1a3a1a"),
+            "duplicata":      ("⚠ Duplicata",  "#FFC107", "#3a3000"),
+            "nao_encontrada": ("❌ Não lida",  "#F44336", "#3a0f0f"),
+            "erro":           ("❌ Erro",       "#F44336", "#3a0f0f"),
         }
         label, cor_fg, cor_bg = _COR.get(status, ("❌ Erro", "#F44336", "#3a0f0f"))
-        _, status_w = _COLS_R[3]
-        cell = ctk.CTkFrame(linha, width=status_w, height=30, fg_color="transparent")
-        cell.pack(side="left")
-        cell.pack_propagate(False)
-        badge = ctk.CTkFrame(cell, fg_color=cor_bg, corner_radius=9, height=18)
-        badge.place(relx=0.5, rely=0.5, anchor="center")
-        ctk.CTkLabel(badge, text=label, text_color=cor_fg,
-                     font=ctk.CTkFont(size=10), height=16).pack(side="left", padx=8, pady=0)
-
+        inserir_linha(self.scroll, self._row_count, _COLS_R,
+                      [str(self._row_count), arquivo, nfe or "-"], label, cor_fg, cor_bg)
         self._rows.append((arquivo, nfe, status))
         if status == "ok":
             self._cnt_ok += 1
@@ -242,29 +208,10 @@ class UploadFrame(ctk.CTkFrame):
 
     def _inserir_linha_upload(self, nfe: str, status: str) -> None:
         self._row_count += 1
-        row_bg = "#252525" if self._row_count % 2 == 0 else "transparent"
-        mono   = ctk.CTkFont(family="Consolas", size=12)
-        linha  = ctk.CTkFrame(self.scroll, height=30, fg_color=row_bg)
-        linha.pack(fill="x")
-        linha.pack_propagate(False)
-
-        for (_, w), txt in zip(_COLS_U[:2], [str(self._row_count), nfe]):
-            cell = ctk.CTkFrame(linha, width=w, height=30, fg_color="transparent")
-            cell.pack(side="left")
-            cell.pack_propagate(False)
-            ctk.CTkLabel(cell, text=txt, anchor="center", font=mono).pack(fill="both", expand=True)
-
         _COR = {"✅": ("#4CAF50", "#1a3a1a"), "⚠": ("#FFC107", "#3a3000"), "❌": ("#F44336", "#3a0f0f")}
         cor_fg, cor_bg = next(((f, b) for k, (f, b) in _COR.items() if k in status), ("#aaa", "transparent"))
-        _, status_w = _COLS_U[2]
-        cell = ctk.CTkFrame(linha, width=status_w, height=30, fg_color="transparent")
-        cell.pack(side="left")
-        cell.pack_propagate(False)
-        badge = ctk.CTkFrame(cell, fg_color=cor_bg, corner_radius=9, height=18)
-        badge.place(relx=0.5, rely=0.5, anchor="center")
-        ctk.CTkLabel(badge, text=status, text_color=cor_fg,
-                     font=ctk.CTkFont(size=10), height=16).pack(side="left", padx=8, pady=0)
-
+        inserir_linha(self.scroll, self._row_count, _COLS_U,
+                      [str(self._row_count), nfe], status, cor_fg, cor_bg)
         self._rows.append((nfe, status))
         if "✅" in status:
             self._cnt_ok += 1

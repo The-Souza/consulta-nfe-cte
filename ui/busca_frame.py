@@ -7,6 +7,7 @@ import pandas as pd
 
 import api
 from ui.widgets.chip import fazer_chip
+from ui.widgets.tabela import fazer_cabecalho, inserir_linha, limpar_scroll
 
 # (header_text, width_px) — definição única usada em header e linhas
 _COLS = [("Nº", 50), ("NF-e", 80), ("CT-e", 100), ("Status", 160)]
@@ -101,16 +102,7 @@ class BuscaFrame(ctk.CTkFrame):
         self.progressbar.set(0)
 
     def _build_tabela(self, main: ctk.CTkFrame) -> None:
-        hdr = ctk.CTkFrame(main, height=36)
-        hdr.pack(fill="x")
-        hdr.pack_propagate(False)
-        ctk.CTkFrame(hdr, width=8, fg_color="transparent").pack(side="left")
-        for txt, w in _COLS:
-            cell = ctk.CTkFrame(hdr, width=w, fg_color="transparent")
-            cell.pack(side="left")
-            cell.pack_propagate(False)
-            ctk.CTkLabel(cell, text=txt, font=ctk.CTkFont(weight="bold"), anchor="center").pack(fill="both", expand=True)
-
+        fazer_cabecalho(main, _COLS).pack(fill="x")
         self.scroll = ctk.CTkScrollableFrame(main)
         self.scroll.pack(fill="both", expand=True, pady=(2, 6))
 
@@ -161,45 +153,20 @@ class BuscaFrame(ctk.CTkFrame):
 
     def _inserir_linha(self, parent, r: dict) -> None:
         self._row_count += 1
-        row_bg = "#252525" if self._row_count % 2 == 0 else "transparent"
-
         _COR = {
             "✅": ("#4CAF50", "#1a3a1a"),
             "⚠":  ("#FFC107", "#3a3000"),
             "❌": ("#F44336", "#3a0f0f"),
         }
-        cor_fg, cor_bg_badge = next(
+        cor_fg, cor_bg = next(
             ((f, b) for k, (f, b) in _COR.items() if k in r["Status"]),
             (None, None),
         )
-
-        mono  = ctk.CTkFont(family="Consolas", size=12)
-        linha = ctk.CTkFrame(parent, height=30, fg_color=row_bg)
-        linha.pack(fill="x", pady=0)
-        linha.pack_propagate(False)
-
-        for (_, w), txt in zip(_COLS[:3], [str(self._row_count), str(r["NF-e"]), r["CT-e"]]):
-            cell = ctk.CTkFrame(linha, width=w, height=30, fg_color="transparent")
-            cell.pack(side="left")
-            cell.pack_propagate(False)
-            ctk.CTkLabel(cell, text=txt, anchor="center", font=mono).pack(fill="both", expand=True)
-
-        _, status_w = _COLS[3]
-        cell = ctk.CTkFrame(linha, width=status_w, height=30, fg_color="transparent")
-        cell.pack(side="left")
-        cell.pack_propagate(False)
-        if cor_fg:
-            badge = ctk.CTkFrame(cell, fg_color=cor_bg_badge, corner_radius=9, height=18)
-            badge.place(relx=0.5, rely=0.5, anchor="center")
-            ctk.CTkLabel(badge, text=r["Status"], text_color=cor_fg,
-                        font=ctk.CTkFont(size=10), height=20).pack(side="left", padx=8, pady=0)
-        else:
-            ctk.CTkLabel(cell, text=r["Status"], anchor="center").pack(fill="both", expand=True)
+        textos = [str(self._row_count), str(r["NF-e"]), r["CT-e"]]
+        inserir_linha(parent, self._row_count, _COLS, textos, r["Status"], cor_fg, cor_bg)
 
     def _limpar_tabela(self) -> None:
-        for w in self.scroll.winfo_children():
-            w.destroy()
-        self.scroll._parent_canvas.yview_moveto(0)
+        limpar_scroll(self.scroll)
         self._resultados = []
         self._row_count  = 0
 
