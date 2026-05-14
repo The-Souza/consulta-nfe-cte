@@ -91,6 +91,9 @@ class UploadFrame(ctk.CTkFrame):
             command=self._limpar_renomear,
         ).pack(side="left")
 
+        self.entry_pasta_input.bind("<Return>", lambda e: self._iniciar_renomear())
+        self.entry_pasta_input.bind("<Tab>", lambda e: (self._iniciar_renomear(), "break"))
+
     def _build_progresso(self, main: ctk.CTkFrame) -> None:
         self.lbl_progresso = ctk.CTkLabel(main, text="", anchor="w")
         self.lbl_progresso.pack(fill="x", pady=(4, 2))
