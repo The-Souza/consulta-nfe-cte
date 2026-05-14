@@ -27,6 +27,7 @@ class UploadFrame(ctk.CTkFrame):
         self._hist_visible = False
         self._cnt_ok = self._cnt_dup = self._cnt_nao = 0
         self._rows: list = []
+        self._pasta_output = ""
         self._build(usuario_nome)
 
     # ------------------------------------------------------------------
@@ -141,27 +142,11 @@ class UploadFrame(ctk.CTkFrame):
         # Controles de upload — lado direito (aparece após renomear)
         self._frame_upload_bar = ctk.CTkFrame(bar, fg_color="transparent")
 
-        self.entry_pasta_output = ctk.CTkEntry(
-            self._frame_upload_bar, width=190, placeholder_text="Pasta renomeada",
-        )
-        self.entry_pasta_output.pack(side="left", padx=(0, 4))
-        ctk.CTkButton(
-            self._frame_upload_bar, text="...", width=34,
-            fg_color="transparent", border_width=1, border_color="gray",
-            command=self._selecionar_pasta_output,
-        ).pack(side="left", padx=(0, 10))
-
+        ctk.CTkLabel(self._frame_upload_bar, text="Data de entrega:").pack(side="left", padx=(0, 6))
         self.entry_data = ctk.CTkEntry(
             self._frame_upload_bar, width=115, placeholder_text="DD/MM/AAAA",
         )
-        self.entry_data.pack(side="left", padx=(0, 8))
-
-        ctk.CTkButton(
-            self._frame_upload_bar, text="Limpar", width=80,
-            fg_color="transparent", hover_color="#444",
-            border_width=1, border_color="gray",
-            command=self._limpar_upload_bar,
-        ).pack(side="left", padx=(0, 8))
+        self.entry_data.pack(side="left", padx=(0, 10))
 
         self.btn_upload = ctk.CTkButton(
             self._frame_upload_bar, text="Iniciar Upload", width=125,
@@ -213,14 +198,6 @@ class UploadFrame(ctk.CTkFrame):
         self.lbl_progresso.configure(text="")
         self.progressbar.set(0)
         self._reset_chips_renomear()
-
-    def _limpar_upload_bar(self) -> None:
-        self.entry_pasta_output.delete(0, "end")
-        self.entry_data.delete(0, "end")
-        self._limpar_tabela()
-        self.lbl_progresso.configure(text="")
-        self.progressbar.set(0)
-        self._reset_chips_upload()
 
     def _limpar_tabela(self) -> None:
         for w in self.scroll.winfo_children():
@@ -315,12 +292,6 @@ class UploadFrame(ctk.CTkFrame):
             self.entry_pasta_input.delete(0, "end")
             self.entry_pasta_input.insert(0, pasta)
 
-    def _selecionar_pasta_output(self) -> None:
-        pasta = filedialog.askdirectory(title="Selecionar pasta renomeada")
-        if pasta:
-            self.entry_pasta_output.delete(0, "end")
-            self.entry_pasta_output.insert(0, pasta)
-
     # ------------------------------------------------------------------
     # ETAPA 1 — RENOMEAR
     # ------------------------------------------------------------------
@@ -351,7 +322,7 @@ class UploadFrame(ctk.CTkFrame):
         threading.Thread(target=self._renomear_thread, args=(pasta,), daemon=True).start()
 
     def _renomear_thread(self, pasta: str) -> None:
-        output = Path(pasta).parent / "renamed"
+        output = Path(pasta) / "renamed"
         output.mkdir(exist_ok=True)
 
         files = [f for f in os.listdir(pasta) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
@@ -405,8 +376,7 @@ class UploadFrame(ctk.CTkFrame):
 
         self.progressbar.set(1)
         self.lbl_progresso.configure(text="Renomeação concluída.")
-        self.entry_pasta_output.delete(0, "end")
-        self.entry_pasta_output.insert(0, output)
+        self._pasta_output = output
         self._frame_upload_bar.pack(side="right")
         self._add_historico(
             tipo="renomear",
@@ -423,7 +393,7 @@ class UploadFrame(ctk.CTkFrame):
     def _iniciar_upload(self) -> None:
         if self._rodando:
             return
-        pasta = self.entry_pasta_output.get().strip() or "renamed"
+        pasta = str(self._pasta_output) or "renamed"
         if not os.path.isdir(pasta):
             self.lbl_progresso.configure(text=f"⚠ Pasta não encontrada: {pasta}")
             return
@@ -575,8 +545,7 @@ class UploadFrame(ctk.CTkFrame):
             self.hdr_upload.pack(fill="x")
             for nfe, status in entry["rows"]:
                 self._inserir_linha_upload(nfe, status)
-            self.entry_pasta_output.delete(0, "end")
-            self.entry_pasta_output.insert(0, entry["pasta"])
+            self._pasta_output = entry["pasta"]
             self.entry_data.delete(0, "end")
             self.entry_data.insert(0, entry["data_str"])
             if not self._frame_upload_bar.winfo_ismapped():
