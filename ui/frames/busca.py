@@ -6,10 +6,12 @@ import pandas as pd
 
 from ui.widgets.chip import fazer_chip
 from ui.widgets.historico import PainelHistorico
+from ui.widgets.progresso import fazer_progresso
 from ui.widgets.tabela import fazer_cabecalho, inserir_linha, limpar_scroll
+from ui.widgets.topbar import fazer_topbar
 from ui.workers.busca import BuscaWorker
+from utils.excel import exportar_excel
 
-# (header_text, width_px) — definição única usada em header e linhas
 _COLS = [("Nº", 50), ("NF-e", 80), ("CT-e", 100), ("Status", 160)]
 
 
@@ -29,37 +31,14 @@ class BuscaFrame(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def _build(self, usuario_nome: str) -> None:
-        self._build_topbar(usuario_nome)
+        fazer_topbar(self, "Consulta NF-e / CT-e", usuario_nome, self._sair)
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=16, pady=12)
         self._build_inputs(main)
-        self._build_progresso(main)
+        self.lbl_progresso, self.progressbar = fazer_progresso(main)
         self._build_tabela(main)
         self._build_rodape(main)
         self._build_historico(main)
-
-    def _build_topbar(self, usuario_nome: str) -> None:
-        topbar = ctk.CTkFrame(self, height=40, corner_radius=0)
-        topbar.pack(fill="x")
-        topbar.pack_propagate(False)
-
-        ctk.CTkLabel(
-            topbar, text="Consulta NF-e / CT-e",
-            font=ctk.CTkFont(size=14, weight="bold"),
-        ).pack(side="left", padx=16)
-
-        ctk.CTkButton(
-            topbar, text="Sair", width=72, height=32,
-            fg_color="transparent", hover_color="#444",
-            border_width=1, border_color="gray",
-            command=self._sair,
-        ).pack(side="right", padx=14, pady=9)
-
-        if usuario_nome:
-            ctk.CTkLabel(
-                topbar, text=f"Olá, {usuario_nome} ·",
-                font=ctk.CTkFont(size=12), text_color="gray",
-            ).pack(side="right", padx=(4, 0))
 
     def _build_inputs(self, main: ctk.CTkFrame) -> None:
         row = ctk.CTkFrame(main, fg_color="transparent")
@@ -90,14 +69,6 @@ class BuscaFrame(ctk.CTkFrame):
 
         self.entry_inicio.bind("<Return>", lambda e: self.entry_fim.focus())
         self.entry_fim.bind("<Return>",    lambda e: self._iniciar_busca())
-
-    def _build_progresso(self, main: ctk.CTkFrame) -> None:
-        self.lbl_progresso = ctk.CTkLabel(main, text="", anchor="w")
-        self.lbl_progresso.pack(fill="x", pady=(4, 2))
-
-        self.progressbar = ctk.CTkProgressBar(main)
-        self.progressbar.pack(fill="x", pady=(0, 8))
-        self.progressbar.set(0)
 
     def _build_tabela(self, main: ctk.CTkFrame) -> None:
         fazer_cabecalho(main, _COLS).pack(fill="x")
@@ -269,14 +240,7 @@ class BuscaFrame(ctk.CTkFrame):
     def _exportar(self) -> None:
         if not self._resultados:
             return
-        inicio  = self._resultados[0]["NF-e"]
-        fim     = self._resultados[-1]["NF-e"]
-        arquivo = f"consulta_nfe_{inicio}_{fim}.xlsx"
-        df = pd.DataFrame([
-            {"NF-e": r["NF-e"], "CT-e": r["CT-e"], "Status": r["Status"].split(" ", 1)[-1]}
-            for r in self._resultados
-        ])
-        df.to_excel(arquivo, index=False)
+        arquivo = exportar_excel(self._resultados)
         self.lbl_progresso.configure(text=f"✅ Salvo: {arquivo}")
 
     # ------------------------------------------------------------------

@@ -2,10 +2,10 @@ import requests
 import customtkinter as ctk
 
 from config import ICON_PATH
-from ui.login_frame import LoginFrame
-from ui.home_frame import HomeFrame
-from ui.busca_frame import BuscaFrame
-from ui.upload_frame import UploadFrame
+from ui.frames.login import LoginFrame
+from ui.frames.home import HomeFrame
+from ui.frames.busca import BuscaFrame
+from ui.frames.upload import UploadFrame
 
 
 class App(ctk.CTk):
