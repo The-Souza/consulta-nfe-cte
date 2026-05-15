@@ -1,5 +1,7 @@
 import customtkinter as ctk
 
+from ui.widgets.topbar import fazer_topbar
+
 
 class HomeFrame(ctk.CTkFrame):
     def __init__(self, parent, usuario_nome: str, on_consulta, on_upload, on_logout):
@@ -8,27 +10,7 @@ class HomeFrame(ctk.CTkFrame):
         self._build(usuario_nome, on_consulta, on_upload)
 
     def _build(self, usuario_nome: str, on_consulta, on_upload) -> None:
-        topbar = ctk.CTkFrame(self, height=40, corner_radius=0)
-        topbar.pack(fill="x")
-        topbar.pack_propagate(False)
-
-        ctk.CTkLabel(
-            topbar, text="Canhotos",
-            font=ctk.CTkFont(size=14, weight="bold"),
-        ).pack(side="left", padx=16)
-
-        ctk.CTkButton(
-            topbar, text="Sair", width=72, height=32,
-            fg_color="transparent", hover_color="#444",
-            border_width=1, border_color="gray",
-            command=self._on_logout,
-        ).pack(side="right", padx=14, pady=9)
-
-        if usuario_nome:
-            ctk.CTkLabel(
-                topbar, text=f"Olá, {usuario_nome} ·",
-                font=ctk.CTkFont(size=12), text_color="gray",
-            ).pack(side="right", padx=(4, 0))
+        fazer_topbar(self, "Canhotos", usuario_nome, self._on_logout)
 
         center = ctk.CTkFrame(self, fg_color="transparent")
         center.place(relx=0.5, rely=0.5, anchor="center")

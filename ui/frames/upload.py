@@ -1,15 +1,17 @@
 import os
-import shutil
 import threading
-import time
 from datetime import datetime
-from pathlib import Path
 from tkinter import filedialog
 
 import customtkinter as ctk
 
-import api
-import ocr
+from ui.widgets.chip import fazer_chip
+from ui.widgets.historico import PainelHistorico
+from ui.widgets.progresso import fazer_progresso
+from ui.widgets.tabela import fazer_cabecalho, inserir_linha, limpar_scroll
+from ui.widgets.topbar import fazer_topbar
+from ui.workers.renomear import RenomearWorker
+from ui.workers.upload import UploadWorker
 
 _COLS_R = [("Nº", 50), ("Arquivo original", 280), ("NF-e detectada", 140), ("Status", 150)]
 _COLS_U = [("Nº", 50), ("NF-e", 120), ("Status", 180)]
@@ -23,8 +25,6 @@ class UploadFrame(ctk.CTkFrame):
         self._stop_event = threading.Event()
         self._rodando    = False
         self._etapa      = "renomear"
-        self._historico: list[dict] = []
-        self._hist_visible = False
         self._cnt_ok = self._cnt_dup = self._cnt_nao = 0
         self._rows: list = []
         self._pasta_output = ""
@@ -35,37 +35,14 @@ class UploadFrame(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def _build(self, usuario_nome: str) -> None:
-        self._build_topbar(usuario_nome)
+        fazer_topbar(self, "Upload Canhotos", usuario_nome, self._sair)
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=16, pady=12)
         self._build_etapa_renomear(main)
-        self._build_progresso(main)
+        self.lbl_progresso, self.progressbar = fazer_progresso(main)
         self._build_tabela(main)
         self._build_rodape(main)
         self._build_historico(main)
-
-    def _build_topbar(self, usuario_nome: str) -> None:
-        topbar = ctk.CTkFrame(self, height=40, corner_radius=0)
-        topbar.pack(fill="x")
-        topbar.pack_propagate(False)
-
-        ctk.CTkLabel(
-            topbar, text="Upload Canhotos",
-            font=ctk.CTkFont(size=14, weight="bold"),
-        ).pack(side="left", padx=16)
-
-        ctk.CTkButton(
-            topbar, text="Sair", width=72, height=32,
-            fg_color="transparent", hover_color="#444",
-            border_width=1, border_color="gray",
-            command=self._sair,
-        ).pack(side="right", padx=14, pady=9)
-
-        if usuario_nome:
-            ctk.CTkLabel(
-                topbar, text=f"Olá, {usuario_nome} ·",
-                font=ctk.CTkFont(size=12), text_color="gray",
-            ).pack(side="right", padx=(4, 0))
 
     def _build_etapa_renomear(self, main: ctk.CTkFrame) -> None:
         row = ctk.CTkFrame(main, fg_color="transparent")
@@ -95,34 +72,12 @@ class UploadFrame(ctk.CTkFrame):
         self.entry_pasta_input.bind("<Return>", lambda e: self._iniciar_renomear())
         self.entry_pasta_input.bind("<Tab>", lambda e: (self._iniciar_renomear(), "break"))
 
-    def _build_progresso(self, main: ctk.CTkFrame) -> None:
-        self.lbl_progresso = ctk.CTkLabel(main, text="", anchor="w")
-        self.lbl_progresso.pack(fill="x", pady=(4, 2))
-        self.progressbar = ctk.CTkProgressBar(main)
-        self.progressbar.pack(fill="x", pady=(0, 8))
-        self.progressbar.set(0)
-
     def _build_tabela(self, main: ctk.CTkFrame) -> None:
-        # Container fixo — mantém a posição do header no layout.
-        # Os dois headers trocam dentro dele sem precisar de before=.
         hdr_slot = ctk.CTkFrame(main, fg_color="transparent")
         hdr_slot.pack(fill="x")
-
-        def _hdr(cols):
-            f = ctk.CTkFrame(hdr_slot, height=36)
-            f.pack_propagate(False)
-            ctk.CTkFrame(f, width=8, fg_color="transparent").pack(side="left")
-            for txt, w in cols:
-                cell = ctk.CTkFrame(f, width=w, fg_color="transparent")
-                cell.pack(side="left")
-                cell.pack_propagate(False)
-                ctk.CTkLabel(cell, text=txt, font=ctk.CTkFont(weight="bold"), anchor="center").pack(fill="both", expand=True)
-            return f
-
-        self.hdr_renomear = _hdr(_COLS_R)
+        self.hdr_renomear = fazer_cabecalho(hdr_slot, _COLS_R)
         self.hdr_renomear.pack(fill="x")
-        self.hdr_upload = _hdr(_COLS_U)
-
+        self.hdr_upload = fazer_cabecalho(hdr_slot, _COLS_U)
         self.scroll = ctk.CTkScrollableFrame(main)
         self.scroll.pack(fill="both", expand=True, pady=(2, 6))
         self._row_count = 0
@@ -131,15 +86,13 @@ class UploadFrame(ctk.CTkFrame):
         bar = ctk.CTkFrame(main, fg_color="transparent")
         bar.pack(fill="x", pady=(4, 0))
 
-        # Chips — lado esquerdo
         stat = ctk.CTkFrame(bar, fg_color="transparent")
         stat.pack(side="left")
-        self.chip_ok  = self._fazer_chip(stat, "#4CAF50", "#1a3a1a")
-        self.chip_dup = self._fazer_chip(stat, "#FFC107", "#3a3000")
-        self.chip_nao = self._fazer_chip(stat, "#F44336", "#3a0f0f")
+        self.chip_ok  = fazer_chip(stat, "#4CAF50", "#1a3a1a")
+        self.chip_dup = fazer_chip(stat, "#FFC107", "#3a3000")
+        self.chip_nao = fazer_chip(stat, "#F44336", "#3a0f0f")
         self._reset_chips_renomear()
 
-        # Controles de upload — lado direito (aparece após renomear)
         self._frame_upload_bar = ctk.CTkFrame(bar, fg_color="transparent")
 
         ctk.CTkLabel(self._frame_upload_bar, text="Data de entrega:").pack(side="left", padx=(0, 6))
@@ -157,25 +110,11 @@ class UploadFrame(ctk.CTkFrame):
         self._btn_upload_hover = self.btn_upload.cget("hover_color")
 
     def _build_historico(self, main: ctk.CTkFrame) -> None:
-        self.btn_hist_toggle = ctk.CTkButton(
-            main, text="▶  Histórico (0)",
-            fg_color="transparent", hover_color="#444",
-            anchor="w", height=28,
-            command=self._toggle_historico,
-        )
-        self.btn_hist_toggle.pack(fill="x", pady=(10, 0))
-        self.hist_scroll = ctk.CTkScrollableFrame(main, height=88)
+        self._hist = PainelHistorico(main, on_restaurar=self._restaurar)
 
     # ------------------------------------------------------------------
     # HELPERS VISUAIS
     # ------------------------------------------------------------------
-
-    def _fazer_chip(self, parent, cor_texto: str, cor_fundo: str) -> ctk.CTkLabel:
-        frame = ctk.CTkFrame(parent, fg_color=cor_fundo, corner_radius=20)
-        frame.pack(side="left", padx=(0, 8))
-        lbl = ctk.CTkLabel(frame, text="", text_color=cor_texto, font=ctk.CTkFont(size=11))
-        lbl.pack(padx=12, pady=3)
-        return lbl
 
     def _reset_chips_renomear(self) -> None:
         self._cnt_ok = self._cnt_dup = self._cnt_nao = 0
@@ -200,41 +139,20 @@ class UploadFrame(ctk.CTkFrame):
         self._reset_chips_renomear()
 
     def _limpar_tabela(self) -> None:
-        for w in self.scroll.winfo_children():
-            w.destroy()
-        self.scroll._parent_canvas.yview_moveto(0)
+        limpar_scroll(self.scroll)
         self._row_count = 0
 
     def _inserir_linha_renomear(self, arquivo: str, nfe: str | None, status: str) -> None:
         self._row_count += 1
-        row_bg = "#252525" if self._row_count % 2 == 0 else "transparent"
-        mono   = ctk.CTkFont(family="Consolas", size=12)
-        linha  = ctk.CTkFrame(self.scroll, height=30, fg_color=row_bg)
-        linha.pack(fill="x")
-        linha.pack_propagate(False)
-
-        for (_, w), txt in zip(_COLS_R[:3], [str(self._row_count), arquivo, nfe or "-"]):
-            cell = ctk.CTkFrame(linha, width=w, height=30, fg_color="transparent")
-            cell.pack(side="left")
-            cell.pack_propagate(False)
-            ctk.CTkLabel(cell, text=txt, anchor="center", font=mono).pack(fill="both", expand=True)
-
         _COR = {
-            "ok":             ("✅ Renomeada",  "#4CAF50", "#1a3a1a"),
-            "duplicata":      ("⚠ Duplicata",   "#FFC107", "#3a3000"),
-            "nao_encontrada": ("❌ Não lida",   "#F44336", "#3a0f0f"),
-            "erro":           ("❌ Erro",        "#F44336", "#3a0f0f"),
+            "ok":             ("✅ Renomeada", "#4CAF50", "#1a3a1a"),
+            "duplicata":      ("⚠ Duplicata",  "#FFC107", "#3a3000"),
+            "nao_encontrada": ("❌ Não lida",  "#F44336", "#3a0f0f"),
+            "erro":           ("❌ Erro",       "#F44336", "#3a0f0f"),
         }
         label, cor_fg, cor_bg = _COR.get(status, ("❌ Erro", "#F44336", "#3a0f0f"))
-        _, status_w = _COLS_R[3]
-        cell = ctk.CTkFrame(linha, width=status_w, height=30, fg_color="transparent")
-        cell.pack(side="left")
-        cell.pack_propagate(False)
-        badge = ctk.CTkFrame(cell, fg_color=cor_bg, corner_radius=9, height=18)
-        badge.place(relx=0.5, rely=0.5, anchor="center")
-        ctk.CTkLabel(badge, text=label, text_color=cor_fg,
-                     font=ctk.CTkFont(size=10), height=16).pack(side="left", padx=8, pady=0)
-
+        inserir_linha(self.scroll, self._row_count, _COLS_R,
+                      [str(self._row_count), arquivo, nfe or "-"], label, cor_fg, cor_bg)
         self._rows.append((arquivo, nfe, status))
         if status == "ok":
             self._cnt_ok += 1
@@ -248,29 +166,10 @@ class UploadFrame(ctk.CTkFrame):
 
     def _inserir_linha_upload(self, nfe: str, status: str) -> None:
         self._row_count += 1
-        row_bg = "#252525" if self._row_count % 2 == 0 else "transparent"
-        mono   = ctk.CTkFont(family="Consolas", size=12)
-        linha  = ctk.CTkFrame(self.scroll, height=30, fg_color=row_bg)
-        linha.pack(fill="x")
-        linha.pack_propagate(False)
-
-        for (_, w), txt in zip(_COLS_U[:2], [str(self._row_count), nfe]):
-            cell = ctk.CTkFrame(linha, width=w, height=30, fg_color="transparent")
-            cell.pack(side="left")
-            cell.pack_propagate(False)
-            ctk.CTkLabel(cell, text=txt, anchor="center", font=mono).pack(fill="both", expand=True)
-
         _COR = {"✅": ("#4CAF50", "#1a3a1a"), "⚠": ("#FFC107", "#3a3000"), "❌": ("#F44336", "#3a0f0f")}
         cor_fg, cor_bg = next(((f, b) for k, (f, b) in _COR.items() if k in status), ("#aaa", "transparent"))
-        _, status_w = _COLS_U[2]
-        cell = ctk.CTkFrame(linha, width=status_w, height=30, fg_color="transparent")
-        cell.pack(side="left")
-        cell.pack_propagate(False)
-        badge = ctk.CTkFrame(cell, fg_color=cor_bg, corner_radius=9, height=18)
-        badge.place(relx=0.5, rely=0.5, anchor="center")
-        ctk.CTkLabel(badge, text=status, text_color=cor_fg,
-                     font=ctk.CTkFont(size=10), height=16).pack(side="left", padx=8, pady=0)
-
+        inserir_linha(self.scroll, self._row_count, _COLS_U,
+                      [str(self._row_count), nfe], status, cor_fg, cor_bg)
         self._rows.append((nfe, status))
         if "✅" in status:
             self._cnt_ok += 1
@@ -319,43 +218,15 @@ class UploadFrame(ctk.CTkFrame):
             fg_color=("#c0392b", "#7b241c"), hover_color=("#a93226", "#641e16"),
             command=self._cancelar,
         )
-        threading.Thread(target=self._renomear_thread, args=(pasta,), daemon=True).start()
-
-    def _renomear_thread(self, pasta: str) -> None:
-        output = Path(pasta) / "renamed"
-        output.mkdir(exist_ok=True)
-
-        files = [f for f in os.listdir(pasta) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
-        total = len(files)
-        t0 = time.time()
-
-        for i, arquivo in enumerate(files):
-            if self._stop_event.is_set():
-                self.after(0, lambda: self._finalizar_renomear(cancelado=True))
-                return
-
-            path = os.path.join(pasta, arquivo)
-            nfe    = None
-            status = "erro"
-            try:
-                nfe = ocr.process_image(path)
-                if nfe is None:
-                    status = "nao_encontrada"
-                else:
-                    novo = output / f"{nfe}.jpg"
-                    if novo.exists():
-                        status = "duplicata"
-                    else:
-                        shutil.move(str(path), str(novo))
-                        status = "ok"
-            except Exception:
-                status = "erro"
-
-            prog    = (i + 1) / total
-            elapsed = time.time() - t0
-            self.after(0, self._atualizar_renomear, arquivo, nfe, status, prog, i + 1, total, elapsed)
-
-        self.after(0, lambda: self._finalizar_renomear(cancelado=False, output=str(output)))
+        worker = RenomearWorker(
+            pasta=pasta,
+            stop_event=self._stop_event,
+            after_fn=self.after,
+            on_update=self._atualizar_renomear,
+            on_done=lambda output: self._finalizar_renomear(cancelado=False, output=output),
+            on_cancel=lambda: self._finalizar_renomear(cancelado=True),
+        )
+        threading.Thread(target=worker.run, daemon=True).start()
 
     def _atualizar_renomear(self, arquivo: str, nfe: str | None, status: str, prog: float, atual: int, total: int, elapsed: float) -> None:
         self.progressbar.set(prog)
@@ -420,50 +291,17 @@ class UploadFrame(ctk.CTkFrame):
             fg_color=("#c0392b", "#7b241c"), hover_color=("#a93226", "#641e16"),
             command=self._cancelar,
         )
-        threading.Thread(target=self._upload_thread, args=(pasta, data_lote, data_str), daemon=True).start()
-
-    def _upload_thread(self, pasta: str, data_lote: str, data_str: str) -> None:
-        pendente_dir = Path(pasta).parent / "pendentes"
-        nao_pend_dir = Path(pasta).parent / "nao_pendentes"
-        pendente_dir.mkdir(exist_ok=True)
-        nao_pend_dir.mkdir(exist_ok=True)
-
-        files = [f for f in os.listdir(pasta) if f.lower().endswith(".jpg")]
-        total = len(files)
-        t0 = time.time()
-
-        for i, arquivo in enumerate(files):
-            if self._stop_event.is_set():
-                self.after(0, lambda: self._finalizar_upload(cancelado=True, pasta=pasta, data_str=data_str))
-                return
-
-            nfe  = Path(arquivo).stem
-            path = Path(pasta) / arquivo
-
-            try:
-                oid, status_api = api.consultar_canhoto_upload(self._session, nfe)
-
-                if oid is None:
-                    status = "❌ Não encontrada"
-                elif status_api != "PENDENTE":
-                    shutil.move(str(path), str(nao_pend_dir / arquivo))
-                    status = f"⚠ {status_api}"
-                else:
-                    full_data = api.get_canhoto_completo(self._session, oid)
-                    ok, err = api.upload_canhoto(self._session, nfe, path, full_data, data_lote)
-                    if ok:
-                        shutil.move(str(path), str(pendente_dir / arquivo))
-                        status = "✅ Enviado"
-                    else:
-                        status = f"❌ {err}"
-            except Exception as e:
-                status = f"❌ {api.erro_amigavel(e)}"
-
-            prog    = (i + 1) / total
-            elapsed = time.time() - t0
-            self.after(0, self._atualizar_upload, nfe, status, prog, i + 1, total, elapsed)
-
-        self.after(0, lambda: self._finalizar_upload(cancelado=False, pasta=pasta, data_str=data_str))
+        worker = UploadWorker(
+            session=self._session,
+            pasta=pasta,
+            data_lote=data_lote,
+            stop_event=self._stop_event,
+            after_fn=self.after,
+            on_update=self._atualizar_upload,
+            on_done=lambda: self._finalizar_upload(cancelado=False, pasta=pasta, data_str=data_str),
+            on_cancel=lambda: self._finalizar_upload(cancelado=True),
+        )
+        threading.Thread(target=worker.run, daemon=True).start()
 
     def _atualizar_upload(self, nfe: str, status: str, prog: float, atual: int, total: int, elapsed: float) -> None:
         self.progressbar.set(prog)
@@ -497,34 +335,10 @@ class UploadFrame(ctk.CTkFrame):
 
     def _add_historico(self, tipo: str, label: str, pasta: str, data_str: str, rows: list) -> None:
         hora = datetime.now().strftime("%H:%M")
-        self._historico.insert(0, {
+        self._hist.adicionar({
             "tipo": tipo, "label": f"{hora}  ·  {label}",
             "pasta": pasta, "data_str": data_str, "rows": rows,
         })
-        prefix = "▼" if self._hist_visible else "▶"
-        self.btn_hist_toggle.configure(text=f"{prefix}  Histórico ({len(self._historico)})")
-        self._rebuild_historico()
-
-    def _toggle_historico(self) -> None:
-        self._hist_visible = not self._hist_visible
-        prefix = "▼" if self._hist_visible else "▶"
-        self.btn_hist_toggle.configure(text=f"{prefix}  Histórico ({len(self._historico)})")
-        if self._hist_visible:
-            self.hist_scroll.pack(fill="x", pady=(2, 0))
-        else:
-            self.hist_scroll.pack_forget()
-
-    def _rebuild_historico(self) -> None:
-        for w in self.hist_scroll.winfo_children():
-            w.destroy()
-        for entry in self._historico:
-            ctk.CTkButton(
-                self.hist_scroll,
-                text=entry["label"],
-                fg_color="transparent", hover_color="#3a3a3a",
-                anchor="w", height=28,
-                command=lambda e=entry: self._restaurar(e),
-            ).pack(fill="x", pady=1)
 
     def _restaurar(self, entry: dict) -> None:
         if self._rodando:
