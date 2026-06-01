@@ -1,7 +1,7 @@
 import requests
 import customtkinter as ctk
 
-from config import ICON_PATH
+from config import ICON_FILE
 from ui.frames.login import LoginFrame
 from ui.frames.home import HomeFrame
 from ui.frames.search import SearchFrame
@@ -15,8 +15,8 @@ class App(ctk.CTk):
         self.geometry("520x500")
         self.resizable(False, False)
 
-        if ICON_PATH.exists():
-            self.iconbitmap(str(ICON_PATH))
+        if ICON_FILE.exists():
+            self.iconbitmap(str(ICON_FILE))
 
         self.session = requests.Session()
         self.session.cookies.set("timezone-offset", "180")
