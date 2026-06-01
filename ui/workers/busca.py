@@ -36,11 +36,11 @@ class BuscaWorker:
                 return
 
             try:
-                cte, status = api.consultar_canhoto(self._session, nfe)
+                cte, status, imagem = api.consultar_canhoto(self._session, nfe)
             except Exception as e:
-                cte, status = "-", f"❌ {api.erro_amigavel(e)}"
+                cte, status, imagem = "-", f"❌ {api.erro_amigavel(e)}", "-"
 
-            r = {"NF-e": nfe, "CT-e": cte, "Status": status}
+            r = {"NF-e": nfe, "CT-e": cte, "Imagem": imagem, "Status": status}
             prog    = (i + 1) / total
             elapsed = time.time() - t0
             self._after(0, self._on_update, r, prog, i + 1, total, elapsed)
