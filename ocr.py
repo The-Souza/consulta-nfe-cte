@@ -11,7 +11,7 @@ pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 _OCR_CONFIGS = ["--psm 6", "--psm 11", "--psm 3"]
 
 
-def _extract_nfe(text: str) -> str | None:
+def _extract_invoice_number(text: str) -> str | None:
     text = re.sub(r"[oO]", "0", text)
     match = re.search(r"00(\d{7})(?!\d)", text)
     return match.group(1) if match else None
@@ -58,7 +58,7 @@ def process_image(path: str) -> str | None:
     for variant in _preprocess_variants(img):
         for config in _OCR_CONFIGS:
             text = pytesseract.image_to_string(variant, config=config)
-            nfe = _extract_nfe(text)
-            if nfe:
-                return nfe
+            invoice_number = _extract_invoice_number(text)
+            if invoice_number:
+                return invoice_number
     return None
