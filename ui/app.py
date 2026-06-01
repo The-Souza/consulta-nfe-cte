@@ -56,7 +56,7 @@ class App(ctk.CTk):
         self._search_frame = SearchFrame(
             self, self.session, self._user_name,
             on_logout=self._back_to_login,
-            on_voltar=self._back_to_home,
+            on_back=self._back_to_home,
         )
         self._search_frame.pack(fill="both", expand=True)
 
@@ -69,7 +69,7 @@ class App(ctk.CTk):
         self._upload_frame = UploadFrame(
             self, self.session, self._user_name,
             on_logout=self._back_to_login,
-            on_voltar=self._back_to_home,
+            on_back=self._back_to_home,
         )
         self._upload_frame.pack(fill="both", expand=True)
 

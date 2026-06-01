@@ -15,11 +15,11 @@ _COLS = [("Nº", 50), ("NF-e", 80), ("CT-e", 100), ("Imagem", 80), ("Status", 16
 
 
 class SearchFrame(ctk.CTkFrame):
-    def __init__(self, parent, session, user_name, on_logout, on_voltar=None):
+    def __init__(self, parent, session, user_name, on_logout, on_back=None):
         super().__init__(parent, fg_color="transparent")
         self._session      = session
         self._on_logout    = on_logout
-        self._on_voltar    = on_voltar
+        self._on_back    = on_back
         self._results    = []
         self._searching  = False
         self._stop_event = threading.Event()
@@ -32,7 +32,7 @@ class SearchFrame(ctk.CTkFrame):
 
     def _build(self, user_name: str) -> None:
         make_topbar(self, "Consulta NF-e / CT-e", user_name, self._logout,
-                    on_voltar=self._back if self._on_voltar else None)
+                    on_back=self._back if self._on_back else None)
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=16, pady=12)
         self._build_inputs(main)
@@ -45,14 +45,14 @@ class SearchFrame(ctk.CTkFrame):
         row = ctk.CTkFrame(main, fg_color="transparent")
         row.pack(fill="x", pady=(0, 4))
 
-        so_numeros = (self.register(lambda v: v.isdigit() or v == ""), "%P")
+        digits_only = (self.register(lambda v: v.isdigit() or v == ""), "%P")
 
         ctk.CTkLabel(row, text="NF-e inicial:").pack(side="left", padx=(0, 4))
-        self.entry_start = ctk.CTkEntry(row, width=110, validate="key", validatecommand=so_numeros)
+        self.entry_start = ctk.CTkEntry(row, width=110, validate="key", validatecommand=digits_only)
         self.entry_start.pack(side="left", padx=(0, 16))
 
         ctk.CTkLabel(row, text="NF-e final:").pack(side="left", padx=(0, 4))
-        self.entry_end = ctk.CTkEntry(row, width=110, validate="key", validatecommand=so_numeros)
+        self.entry_end = ctk.CTkEntry(row, width=110, validate="key", validatecommand=digits_only)
         self.entry_end.pack(side="left", padx=(0, 12))
 
         self.btn_search = ctk.CTkButton(row, text="Buscar", width=100, command=self._start_search)
@@ -121,12 +121,12 @@ class SearchFrame(ctk.CTkFrame):
             "⚠":  ("#FFC107", "#3a3000"),
             "❌": ("#F44336", "#3a0f0f"),
         }
-        cor_fg, cor_bg = next(
+        text_color, bg_color = next(
             ((f, b) for k, (f, b) in _COR.items() if k in r["Status"]),
             (None, None),
         )
         texts = [str(self._row_count), str(r["NF-e"]), r["CT-e"], r.get("Imagem", "-")]
-        insert_row(parent, self._row_count, _COLS, texts, r["Status"], cor_fg, cor_bg)
+        insert_row(parent, self._row_count, _COLS, texts, r["Status"], text_color, bg_color)
 
     def _clear_table(self) -> None:
         clear_scroll(self.scroll)
@@ -139,7 +139,7 @@ class SearchFrame(ctk.CTkFrame):
 
     def _back(self) -> None:
         self._stop_event.set()
-        self._on_voltar()
+        self._on_back()
 
     def _logout(self) -> None:
         self._stop_event.set()
@@ -256,18 +256,18 @@ class SearchFrame(ctk.CTkFrame):
     def _add_history(self, start: int, end: int, results: list) -> None:
         hour  = datetime.now().strftime("%H:%M")
         label = f"{hour}  ·  NF-e {start} → {end}  ({len(results)} itens)"
-        self._hist.add({"label": label, "inicio": start, "fim": end, "resultados": results})
+        self._hist.add({"label": label, "start": start, "end": end, "results": results})
 
     def _restore(self, entry: dict) -> None:
         if self._searching:
             return
         self.entry_start.delete(0, "end")
-        self.entry_start.insert(0, str(entry["inicio"]))
+        self.entry_start.insert(0, str(entry["start"]))
         self.entry_end.delete(0, "end")
-        self.entry_end.insert(0, str(entry["fim"]))
+        self.entry_end.insert(0, str(entry["end"]))
 
         self._clear_table()
-        self._results = list(entry["resultados"])
+        self._results = list(entry["results"])
         for r in self._results:
             self._insert_row(self.scroll, r)
         self.scroll._parent_canvas.yview_moveto(0)

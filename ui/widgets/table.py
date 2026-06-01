@@ -19,8 +19,8 @@ def insert_row(
     cols: list[tuple[str, int]],
     texts: list[str],
     status: str,
-    cor_fg: str | None,
-    cor_bg: str | None,
+    text_color: str | None,
+    bg_color: str | None,
 ) -> None:
     row_bg = "#252525" if row_num % 2 == 0 else "transparent"
     mono = ctk.CTkFont(family="Consolas", size=12)
@@ -38,10 +38,10 @@ def insert_row(
     cell = ctk.CTkFrame(row, width=status_w, height=30, fg_color="transparent")
     cell.pack(side="left")
     cell.pack_propagate(False)
-    if cor_fg:
-        badge = ctk.CTkFrame(cell, fg_color=cor_bg, corner_radius=9, height=18)
+    if text_color:
+        badge = ctk.CTkFrame(cell, fg_color=bg_color, corner_radius=9, height=18)
         badge.place(relx=0.5, rely=0.5, anchor="center")
-        ctk.CTkLabel(badge, text=status, text_color=cor_fg,
+        ctk.CTkLabel(badge, text=status, text_color=text_color,
                      font=ctk.CTkFont(size=10), height=16).pack(side="left", padx=8, pady=0)
     else:
         ctk.CTkLabel(cell, text=status, anchor="center").pack(fill="both", expand=True)

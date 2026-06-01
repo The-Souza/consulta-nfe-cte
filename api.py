@@ -16,7 +16,7 @@ def friendly_error(e: Exception) -> str:
 
 
 def login(session: requests.Session, email: str, password: str) -> str:
-    """POST de login. Injeta o auth-token na sessão e retorna o nome do usuário."""
+    """POST login. Injects auth-token into the session and returns the user name."""
     domain = urlparse(LOGIN_URL).netloc
     resp = session.post(
         LOGIN_URL,
@@ -33,12 +33,12 @@ def login(session: requests.Session, email: str, password: str) -> str:
     return data.get("usuario", {}).get("nome", "")
 
 
-def get_invoice(session: requests.Session, nfe: int) -> tuple[str, str, str]:
-    """GET de um canhoto. Retorna (numero_cte, status_label, has_image)."""
+def get_invoice(session: requests.Session, invoice_num: int) -> tuple[str, str, str]:
+    """GET invoice by number. Returns (cte_number, status_label, has_image)."""
     resp = session.get(
         CANHOTOS_URL,
         headers=QUERY_HEADERS,
-        params={"limit": 40, "numero": nfe, "offset": 0},
+        params={"limit": 40, "numero": invoice_num, "offset": 0},
         timeout=10,
     )
     data = resp.json()
@@ -52,8 +52,8 @@ def get_invoice(session: requests.Session, nfe: int) -> tuple[str, str, str]:
     return "-", "⚠ Sem CT-e", has_image
 
 
-def get_invoice_for_upload(session: requests.Session, nfe: str) -> tuple[str | None, str]:
-    """GET de um canhoto para upload. Retorna (oid, status_api) ou (None, status_label)."""
+def get_invoice_for_upload(session: requests.Session, invoice_num: str) -> tuple[str | None, str]:
+    """GET invoice for upload. Returns (oid, api_status) or (None, error_label)."""
     resp = session.get(
         CANHOTOS_URL,
         headers=QUERY_HEADERS,
@@ -63,7 +63,7 @@ def get_invoice_for_upload(session: requests.Session, nfe: str) -> tuple[str | N
             "canhotoSemDataEntrega": "false",
             "canhotoSemImagem": "false",
             "limit": 40,
-            "numero": nfe,
+            "numero": invoice_num,
             "offset": 0,
         },
         timeout=10,
@@ -76,7 +76,7 @@ def get_invoice_for_upload(session: requests.Session, nfe: str) -> tuple[str | N
 
 
 def get_invoice_details(session: requests.Session, oid: str) -> dict:
-    """GET dados completos de um canhoto pelo oid."""
+    """GET full invoice record by oid."""
     headers = {**QUERY_HEADERS, "programa": "Canhoto"}
     resp = session.get(f"{CANHOTOS_URL}/{oid}", headers=headers, timeout=10)
     resp.raise_for_status()
@@ -85,12 +85,12 @@ def get_invoice_details(session: requests.Session, oid: str) -> dict:
 
 def upload_invoice(
     session: requests.Session,
-    nfe: str,
+    invoice_num: str,
     file_path: Path,
     full_data: dict,
     batch_date: str,
 ) -> tuple[bool, str | None]:
-    """POST upload de imagem de canhoto. Retorna (sucesso, mensagem_erro)."""
+    """POST invoice image upload. Returns (success, error_message)."""
     with open(file_path, "rb") as f:
         base64_img = base64.b64encode(f.read()).decode()
 
@@ -100,7 +100,7 @@ def upload_invoice(
     payload = {
         **full_data,
         "base64": base64_img,
-        "nomeImagem": f"{nfe}.jpeg",
+        "nomeImagem": f"{invoice_num}.jpeg",
         "dataEntregaAlterada": True,
         "validaDataEntrega": True,
     }

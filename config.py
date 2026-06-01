@@ -4,7 +4,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Funciona tanto rodando como script quanto como .exe gerado pelo PyInstaller
+# Works both when running as a script and as a PyInstaller .exe
 _base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
 load_dotenv(_base / ".env")
 

@@ -18,11 +18,11 @@ _COLS_U = [("Nº", 50), ("NF-e", 120), ("Status", 180)]
 
 
 class UploadFrame(ctk.CTkFrame):
-    def __init__(self, parent, session, user_name: str, on_logout, on_voltar=None):
+    def __init__(self, parent, session, user_name: str, on_logout, on_back=None):
         super().__init__(parent, fg_color="transparent")
         self._session       = session
         self._on_logout     = on_logout
-        self._on_voltar     = on_voltar
+        self._on_back     = on_back
         self._stop_event    = threading.Event()
         self._running       = False
         self._step          = "rename"
@@ -37,7 +37,7 @@ class UploadFrame(ctk.CTkFrame):
 
     def _build(self, user_name: str) -> None:
         make_topbar(self, "Upload Canhotos", user_name, self._logout,
-                    on_voltar=self._back if self._on_voltar else None)
+                    on_back=self._back if self._on_back else None)
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=16, pady=12)
         self._build_rename_step(main)
@@ -175,9 +175,9 @@ class UploadFrame(ctk.CTkFrame):
             "nao_encontrada": ("❌ Não lida",  "#F44336", "#3a0f0f"),
             "erro":           ("❌ Erro",       "#F44336", "#3a0f0f"),
         }
-        label, cor_fg, cor_bg = _COR.get(status, ("❌ Erro", "#F44336", "#3a0f0f"))
+        label, text_color, bg_color = _COR.get(status, ("❌ Erro", "#F44336", "#3a0f0f"))
         insert_row(self.scroll, self._row_count, _COLS_R,
-                   [str(self._row_count), filename, invoice_num or "-"], label, cor_fg, cor_bg)
+                   [str(self._row_count), filename, invoice_num or "-"], label, text_color, bg_color)
         self._rows.append((filename, invoice_num, status))
         if status == "ok":
             self._cnt_ok += 1
@@ -192,9 +192,9 @@ class UploadFrame(ctk.CTkFrame):
     def _insert_upload_row(self, invoice_num: str, status: str) -> None:
         self._row_count += 1
         _COR = {"✅": ("#4CAF50", "#1a3a1a"), "⚠": ("#FFC107", "#3a3000"), "❌": ("#F44336", "#3a0f0f")}
-        cor_fg, cor_bg = next(((f, b) for k, (f, b) in _COR.items() if k in status), ("#aaa", "transparent"))
+        text_color, bg_color = next(((f, b) for k, (f, b) in _COR.items() if k in status), ("#aaa", "transparent"))
         insert_row(self.scroll, self._row_count, _COLS_U,
-                   [str(self._row_count), invoice_num], status, cor_fg, cor_bg)
+                   [str(self._row_count), invoice_num], status, text_color, bg_color)
         self._rows.append((invoice_num, status))
         if "✅" in status:
             self._cnt_ok += 1
@@ -273,10 +273,10 @@ class UploadFrame(ctk.CTkFrame):
         self.lbl_progress.configure(text="Renomeação concluída.")
         self._output_folder = output
         self._add_history(
-            tipo="renomear",
+            entry_type="rename",
             label=f"✅ {self._cnt_ok}  ·  ⚠ {self._cnt_dup}  ·  ❌ {self._cnt_error}  —  {output}",
             folder=output,
-            data_str="",
+            date_str="",
             rows=list(self._rows),
         )
 
@@ -302,9 +302,9 @@ class UploadFrame(ctk.CTkFrame):
             self.lbl_progress.configure(text=f"⚠ Pasta não encontrada: {folder}")
             return
 
-        data_str = self.entry_date.get().strip()
+        date_str = self.entry_date.get().strip()
         try:
-            dt = datetime.strptime(data_str, "%d/%m/%Y")
+            dt = datetime.strptime(date_str, "%d/%m/%Y")
             batch_date = dt.strftime("%Y-%m-%dT12:00:00.000Z")
         except ValueError:
             self.lbl_progress.configure(text="⚠ Data inválida. Use DD/MM/AAAA.")
@@ -331,7 +331,7 @@ class UploadFrame(ctk.CTkFrame):
             stop_event=self._stop_event,
             after_fn=self.after,
             on_update=self._update_upload,
-            on_done=lambda: self._finish_upload(cancelled=False, folder=folder, data_str=data_str),
+            on_done=lambda: self._finish_upload(cancelled=False, folder=folder, date_str=date_str),
             on_cancel=lambda: self._finish_upload(cancelled=True),
         )
         threading.Thread(target=worker.run, daemon=True).start()
@@ -342,7 +342,7 @@ class UploadFrame(ctk.CTkFrame):
         self.lbl_progress.configure(text=f"NF-e {invoice_num}  ({current}/{total})  {m:02d}:{s:02d}")
         self._insert_upload_row(invoice_num, status)
 
-    def _finish_upload(self, cancelled: bool, folder: str = "", data_str: str = "") -> None:
+    def _finish_upload(self, cancelled: bool, folder: str = "", date_str: str = "") -> None:
         self._running = False
         self.btn_upload.configure(
             text="Iniciar Upload",
@@ -355,10 +355,10 @@ class UploadFrame(ctk.CTkFrame):
             self.progressbar.set(1)
             self.lbl_progress.configure(text="Upload concluído.")
             self._add_history(
-                tipo="upload",
-                label=f"✅ {self._cnt_ok}  ·  ⚠ {self._cnt_dup}  ·  ❌ {self._cnt_error}  —  {folder}  ·  {data_str}",
+                entry_type="upload",
+                label=f"✅ {self._cnt_ok}  ·  ⚠ {self._cnt_dup}  ·  ❌ {self._cnt_error}  —  {folder}  ·  {date_str}",
                 folder=folder,
-                data_str=data_str,
+                date_str=date_str,
                 rows=list(self._rows),
             )
 
@@ -366,34 +366,34 @@ class UploadFrame(ctk.CTkFrame):
     # HISTÓRICO
     # ------------------------------------------------------------------
 
-    def _add_history(self, tipo: str, label: str, folder: str, data_str: str, rows: list) -> None:
+    def _add_history(self, entry_type: str, label: str, folder: str, date_str: str, rows: list) -> None:
         hour = datetime.now().strftime("%H:%M")
         self._hist.add({
-            "tipo": tipo, "label": f"{hour}  ·  {label}",
-            "pasta": folder, "data_str": data_str, "rows": rows,
+            "type": entry_type, "label": f"{hour}  ·  {label}",
+            "folder": folder, "date_str": date_str, "rows": rows,
         })
 
     def _restore(self, entry: dict) -> None:
         if self._running:
             return
         self._clear_table()
-        if entry["tipo"] == "renomear":
+        if entry["type"] == "rename":
             self._reset_rename_chips()
             self.hdr_upload.pack_forget()
             self.hdr_rename.pack(fill="x")
             for filename, invoice_num, status in entry["rows"]:
                 self._insert_rename_row(filename, invoice_num, status)
             self.entry_input_folder.delete(0, "end")
-            self.entry_input_folder.insert(0, entry["pasta"])
+            self.entry_input_folder.insert(0, entry["folder"])
         else:
             self._reset_upload_chips()
             self.hdr_rename.pack_forget()
             self.hdr_upload.pack(fill="x")
             for invoice_num, status in entry["rows"]:
                 self._insert_upload_row(invoice_num, status)
-            self._output_folder = entry["pasta"]
+            self._output_folder = entry["folder"]
             self.entry_date.delete(0, "end")
-            self.entry_date.insert(0, entry["data_str"])
+            self.entry_date.insert(0, entry["date_str"])
         self.scroll._parent_canvas.yview_moveto(0)
         self.lbl_progress.configure(text=f"Histórico: {entry['label']}")
         self.progressbar.set(1)
@@ -407,7 +407,7 @@ class UploadFrame(ctk.CTkFrame):
 
     def _back(self) -> None:
         self._stop_event.set()
-        self._on_voltar()
+        self._on_back()
 
     def _logout(self) -> None:
         self._stop_event.set()
