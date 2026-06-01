@@ -1,16 +1,16 @@
 import customtkinter as ctk
 
-from ui.widgets.topbar import fazer_topbar
+from ui.widgets.topbar import make_topbar
 
 
 class HomeFrame(ctk.CTkFrame):
-    def __init__(self, parent, usuario_nome: str, on_consulta, on_upload, on_logout):
+    def __init__(self, parent, user_name: str, on_search, on_upload, on_logout):
         super().__init__(parent, fg_color="transparent")
         self._on_logout = on_logout
-        self._build(usuario_nome, on_consulta, on_upload)
+        self._build(user_name, on_search, on_upload)
 
-    def _build(self, usuario_nome: str, on_consulta, on_upload) -> None:
-        fazer_topbar(self, "Canhotos", usuario_nome, self._on_logout)
+    def _build(self, user_name: str, on_search, on_upload) -> None:
+        make_topbar(self, "Canhotos", user_name, self._on_logout)
 
         center = ctk.CTkFrame(self, fg_color="transparent")
         center.place(relx=0.5, rely=0.5, anchor="center")
@@ -25,7 +25,7 @@ class HomeFrame(ctk.CTkFrame):
             text="Consulta NF-e / CT-e",
             width=280, height=64,
             font=ctk.CTkFont(size=14, weight="bold"),
-            command=on_consulta,
+            command=on_search,
         ).pack(pady=(0, 16))
 
         ctk.CTkButton(

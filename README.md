@@ -7,16 +7,19 @@ Aplicativo desktop para consultar associações NF-e → CT-e e fazer upload de 
 ## Funcionalidades
 
 ### Consulta NF-e / CT-e
+
 - Login automático com e-mail e senha
 - Busca por intervalo de NF-e
-- Tabela de resultados com status: ✅ Com CT-e / ⚠ Sem CT-e / ❌ Não cadastrada
+- Tabela de resultados com status: ✅ Com CT-e / ⚠ Sem CT-e / ❌ Não cadastrada e indicador de imagem cadastrada
 - Histórico de consultas com restauração em um clique
 - Exportação para Excel
 - Salvamento seguro de credenciais (Windows Credential Manager)
 
 ### Upload Canhotos
-- **Etapa 1 — Renomear:** lê imagens de uma pasta, detecta o número de NF-e via OCR (Tesseract) e renomeia os arquivos para `<nfe>.jpg` em `<pasta>/renamed/`
-- **Etapa 2 — Upload:** envia os canhotos renomeados para o sistema, ignorando NF-es que não estejam com status `PENDENTE`
+
+- **Etapa 1 — Renomear:** lê imagens (`.jpg` e `.jpeg`) de uma pasta, detecta o número de NF-e via OCR (Tesseract) e renomeia os arquivos para `<nfe>.jpg` em `<pasta>/renomeadas/`
+- **Etapa 2 — Upload:** envia os canhotos renomeados para o sistema; NF-es não `PENDENTE` vão para `nao-pendentes/`, enviadas para `pendentes/`
+- Input de data com máscara automática (DD/MM/AAAA)
 - Histórico de renomeações e uploads com restauração em um clique
 
 ## Requisitos
@@ -51,16 +54,16 @@ python script.py
 
 Copie `.env.example` para `.env` e preencha os valores:
 
-| Variável          | Descrição                                       |
-|-------------------|-------------------------------------------------|
-| `LOGIN_URL`       | URL do endpoint de login                        |
-| `CANHOTOS_URL`    | URL do endpoint de consulta/upload de canhotos  |
-| `SIGLA_SISTEMA`   | Identificador do sistema (header da requisição) |
-| `PROGRAMA`        | Nome do módulo (header da requisição)           |
-| `APP_NAME`        | Identificador do app para a barra de tarefas    |
-| `APP_SUBTITULO`   | Subtítulo exibido na tela de login              |
-| `ICON_FILE`       | Nome do arquivo de ícone (ex: `icon.ico`)       |
-| `TESSERACT_PATH`  | Caminho para o executável do Tesseract (padrão: `C:\Program Files\Tesseract-OCR\tesseract.exe`) |
+| Variável         | Descrição                                                                                       |
+| ---------------- | ----------------------------------------------------------------------------------------------- |
+| `LOGIN_URL`      | URL do endpoint de login                                                                        |
+| `CANHOTOS_URL`   | URL do endpoint de consulta/upload de canhotos                                                  |
+| `SIGLA_SISTEMA`  | Identificador do sistema (header da requisição)                                                 |
+| `PROGRAMA`       | Nome do módulo (header da requisição)                                                           |
+| `APP_NAME`       | Identificador do app para a barra de tarefas                                                    |
+| `APP_SUBTITLE`   | Subtítulo exibido na tela de login                                                              |
+| `ICON_FILE`      | Nome do arquivo de ícone (ex: `icon.ico`)                                                       |
+| `TESSERACT_PATH` | Caminho para o executável do Tesseract (padrão: `C:\Program Files\Tesseract-OCR\tesseract.exe`) |
 
 ## Gerando o executável
 
@@ -95,17 +98,17 @@ consulta-nfe-cte/
 │   ├── frames/
 │   │   ├── login.py    # Tela de login
 │   │   ├── home.py     # Tela inicial (escolha de modo)
-│   │   ├── busca.py    # Tela de consulta NF-e / CT-e
+│   │   ├── search.py   # Tela de consulta NF-e / CT-e
 │   │   └── upload.py   # Tela de renomear + upload de canhotos
 │   ├── widgets/
 │   │   ├── chip.py     # Indicador colorido de contagem
-│   │   ├── historico.py# Painel de histórico recolhível
-│   │   ├── progresso.py# Barra de progresso + label
-│   │   ├── tabela.py   # Cabeçalho e linhas da tabela
-│   │   └── topbar.py   # Barra superior com título e botão Sair
+│   │   ├── history.py  # Painel de histórico recolhível
+│   │   ├── progress.py # Barra de progresso + label
+│   │   ├── table.py    # Cabeçalho e linhas da tabela
+│   │   └── topbar.py   # Barra superior com título e botões de navegação
 │   └── workers/
-│       ├── busca.py    # Thread de consulta NF-e
-│       ├── renomear.py # Thread de OCR e renomeação
+│       ├── search.py   # Thread de consulta NF-e
+│       ├── rename.py   # Thread de OCR e renomeação
 │       └── upload.py   # Thread de upload de canhotos
 ├── utils/
 │   └── excel.py        # Exportação para Excel

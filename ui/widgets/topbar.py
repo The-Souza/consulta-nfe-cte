@@ -3,7 +3,7 @@ from typing import Callable
 import customtkinter as ctk
 
 
-def fazer_topbar(parent, titulo: str, usuario_nome: str, on_sair: Callable, on_voltar: Callable | None = None) -> None:
+def make_topbar(parent, titulo: str, user_name: str, on_sair: Callable, on_voltar: Callable | None = None) -> None:
     topbar = ctk.CTkFrame(parent, height=40, corner_radius=0)
     topbar.pack(fill="x")
     topbar.pack_propagate(False)
@@ -28,8 +28,8 @@ def fazer_topbar(parent, titulo: str, usuario_nome: str, on_sair: Callable, on_v
         command=on_sair,
     ).pack(side="right", padx=14, pady=9)
 
-    if usuario_nome:
+    if user_name:
         ctk.CTkLabel(
-            topbar, text=f"Olá, {usuario_nome} ·",
+            topbar, text=f"Olá, {user_name} ·",
             font=ctk.CTkFont(size=12), text_color="gray",
         ).pack(side="right", padx=(4, 0))

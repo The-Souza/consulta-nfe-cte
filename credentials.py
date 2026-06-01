@@ -10,13 +10,13 @@ _CONFIG          = _base / "config.json"
 _KEYRING_SERVICE = APP_NAME
 
 
-def salvar(email: str, senha: str) -> None:
+def save(email: str, password: str) -> None:
     _CONFIG.write_text(json.dumps({"email": email}), encoding="utf-8")
-    keyring.set_password(_KEYRING_SERVICE, email, senha)
+    keyring.set_password(_KEYRING_SERVICE, email, password)
 
 
-def carregar() -> tuple[str, str]:
-    email, senha = "", ""
+def load() -> tuple[str, str]:
+    email, password = "", ""
     if _CONFIG.exists():
         try:
             email = json.loads(_CONFIG.read_text(encoding="utf-8")).get("email", "")
@@ -24,7 +24,7 @@ def carregar() -> tuple[str, str]:
             pass
     if email:
         try:
-            senha = keyring.get_password(_KEYRING_SERVICE, email) or ""
+            password = keyring.get_password(_KEYRING_SERVICE, email) or ""
         except Exception:
             pass
-    return email, senha
+    return email, password

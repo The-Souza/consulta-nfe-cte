@@ -4,7 +4,7 @@ import customtkinter as ctk
 from config import ICON_PATH
 from ui.frames.login import LoginFrame
 from ui.frames.home import HomeFrame
-from ui.frames.busca import BuscaFrame
+from ui.frames.search import SearchFrame
 from ui.frames.upload import UploadFrame
 
 
@@ -21,78 +21,78 @@ class App(ctk.CTk):
         self.session = requests.Session()
         self.session.cookies.set("timezone-offset", "180")
 
-        self._usuario_nome  = ""
+        self._user_name     = ""
         self._home_frame    = None
-        self._busca_frame   = None
+        self._search_frame  = None
         self._upload_frame  = None
 
-        self._login_frame = LoginFrame(self, on_success=self._mostrar_home)
+        self._login_frame = LoginFrame(self, on_success=self._show_home)
         self._login_frame.pack(fill="both", expand=True)
 
     # ------------------------------------------------------------------
     # NAVEGAÇÃO
     # ------------------------------------------------------------------
 
-    def _mostrar_home(self, usuario_nome: str) -> None:
-        self._usuario_nome = usuario_nome
+    def _show_home(self, user_name: str) -> None:
+        self._user_name = user_name
         self._login_frame.pack_forget()
         self.geometry("520x500")
         self.resizable(False, False)
         self._home_frame = HomeFrame(
             self,
-            usuario_nome=usuario_nome,
-            on_consulta=self._mostrar_busca,
-            on_upload=self._mostrar_upload,
-            on_logout=self._voltar_login,
+            user_name=user_name,
+            on_search=self._show_search,
+            on_upload=self._show_upload,
+            on_logout=self._back_to_login,
         )
         self._home_frame.pack(fill="both", expand=True)
 
-    def _mostrar_busca(self) -> None:
+    def _show_search(self) -> None:
         if self._home_frame:
             self._home_frame.pack_forget()
         self.geometry("920x680")
         self.resizable(True, True)
         self.minsize(700, 520)
-        self._busca_frame = BuscaFrame(
-            self, self.session, self._usuario_nome,
-            on_logout=self._voltar_login,
-            on_voltar=self._voltar_home,
+        self._search_frame = SearchFrame(
+            self, self.session, self._user_name,
+            on_logout=self._back_to_login,
+            on_voltar=self._back_to_home,
         )
-        self._busca_frame.pack(fill="both", expand=True)
+        self._search_frame.pack(fill="both", expand=True)
 
-    def _mostrar_upload(self) -> None:
+    def _show_upload(self) -> None:
         if self._home_frame:
             self._home_frame.pack_forget()
         self.geometry("920x720")
         self.resizable(True, True)
         self.minsize(700, 560)
         self._upload_frame = UploadFrame(
-            self, self.session, self._usuario_nome,
-            on_logout=self._voltar_login,
-            on_voltar=self._voltar_home,
+            self, self.session, self._user_name,
+            on_logout=self._back_to_login,
+            on_voltar=self._back_to_home,
         )
         self._upload_frame.pack(fill="both", expand=True)
 
-    def _voltar_home(self) -> None:
-        for frame in (self._busca_frame, self._upload_frame):
+    def _back_to_home(self) -> None:
+        for frame in (self._search_frame, self._upload_frame):
             if frame:
                 frame.destroy()
-        self._busca_frame  = None
+        self._search_frame = None
         self._upload_frame = None
         self.geometry("520x500")
         self.resizable(False, False)
         if self._home_frame:
             self._home_frame.pack(fill="both", expand=True)
 
-    def _voltar_login(self) -> None:
+    def _back_to_login(self) -> None:
         self.session.cookies.clear()
         self.session.cookies.set("timezone-offset", "180")
 
-        for frame in (self._home_frame, self._busca_frame, self._upload_frame):
+        for frame in (self._home_frame, self._search_frame, self._upload_frame):
             if frame:
                 frame.destroy()
         self._home_frame   = None
-        self._busca_frame  = None
+        self._search_frame = None
         self._upload_frame = None
 
         self._login_frame.reset()
