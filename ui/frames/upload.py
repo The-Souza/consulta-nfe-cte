@@ -18,10 +18,11 @@ _COLS_U = [("Nº", 50), ("NF-e", 120), ("Status", 180)]
 
 
 class UploadFrame(ctk.CTkFrame):
-    def __init__(self, parent, session, usuario_nome: str, on_logout):
+    def __init__(self, parent, session, usuario_nome: str, on_logout, on_voltar=None):
         super().__init__(parent, fg_color="transparent")
         self._session    = session
         self._on_logout  = on_logout
+        self._on_voltar  = on_voltar
         self._stop_event = threading.Event()
         self._rodando    = False
         self._etapa      = "renomear"
@@ -35,7 +36,8 @@ class UploadFrame(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def _build(self, usuario_nome: str) -> None:
-        fazer_topbar(self, "Upload Canhotos", usuario_nome, self._sair)
+        fazer_topbar(self, "Upload Canhotos", usuario_nome, self._sair,
+                     on_voltar=self._voltar if self._on_voltar else None)
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=16, pady=12)
         self._build_etapa_renomear(main)
@@ -49,7 +51,7 @@ class UploadFrame(ctk.CTkFrame):
         row.pack(fill="x", pady=(0, 8))
 
         ctk.CTkLabel(row, text="Pasta de imagens:").pack(side="left", padx=(0, 6))
-        self.entry_pasta_input = ctk.CTkEntry(row, width=320, placeholder_text="images_raw")
+        self.entry_pasta_input = ctk.CTkEntry(row, width=320, placeholder_text="imagens")
         self.entry_pasta_input.pack(side="left", padx=(0, 4))
         ctk.CTkButton(
             row, text="...", width=34,
@@ -100,6 +102,7 @@ class UploadFrame(ctk.CTkFrame):
             self._frame_upload_bar, width=115, placeholder_text="DD/MM/AAAA",
         )
         self.entry_data.pack(side="left", padx=(0, 10))
+        self.entry_data.bind("<KeyRelease>", self._on_data_keyrelease)
 
         self.btn_upload = ctk.CTkButton(
             self._frame_upload_bar, text="Iniciar Upload", width=125,
@@ -108,6 +111,7 @@ class UploadFrame(ctk.CTkFrame):
         self.btn_upload.pack(side="left")
         self._btn_upload_fg    = self.btn_upload.cget("fg_color")
         self._btn_upload_hover = self.btn_upload.cget("hover_color")
+        self._frame_upload_bar.pack(side="right")
 
     def _build_historico(self, main: ctk.CTkFrame) -> None:
         self._hist = PainelHistorico(main, on_restaurar=self._restaurar)
@@ -128,9 +132,30 @@ class UploadFrame(ctk.CTkFrame):
         self.chip_dup.configure(text="⚠  0  Ignorados")
         self.chip_nao.configure(text="❌  0  Erros")
 
+    def _on_data_keyrelease(self, event=None) -> None:
+        if event and event.keysym == "BackSpace":
+            val = self.entry_data.get()
+            if val.endswith("/"):
+                self.entry_data.delete(len(val) - 1)
+            return
+        if event and event.keysym in ("Delete", "Left", "Right", "Tab", "Return", "Shift_L", "Shift_R", "Control_L", "Control_R"):
+            return
+        val = self.entry_data.get()
+        digits = "".join(c for c in val if c.isdigit())[:8]
+        if len(digits) >= 5:
+            formatted = f"{digits[:2]}/{digits[2:4]}/{digits[4:]}"
+        elif len(digits) >= 3:
+            formatted = f"{digits[:2]}/{digits[2:]}"
+        else:
+            formatted = digits
+        if formatted != val:
+            self.entry_data.delete(0, "end")
+            self.entry_data.insert(0, formatted)
+            self.entry_data.icursor(len(formatted))
+
     def _limpar_renomear(self) -> None:
         self.entry_pasta_input.delete(0, "end")
-        self._frame_upload_bar.pack_forget()
+        self._pasta_output = ""
         self.hdr_upload.pack_forget()
         self.hdr_renomear.pack(fill="x")
         self._limpar_tabela()
@@ -205,7 +230,6 @@ class UploadFrame(ctk.CTkFrame):
 
         self._etapa = "renomear"
         self._rows = []
-        self._frame_upload_bar.pack_forget()
         self.hdr_upload.pack_forget()
         self.hdr_renomear.pack(fill="x")
         self._limpar_tabela()
@@ -248,7 +272,6 @@ class UploadFrame(ctk.CTkFrame):
         self.progressbar.set(1)
         self.lbl_progresso.configure(text="Renomeação concluída.")
         self._pasta_output = output
-        self._frame_upload_bar.pack(side="right")
         self._add_historico(
             tipo="renomear",
             label=f"✅ {self._cnt_ok}  ·  ⚠ {self._cnt_dup}  ·  ❌ {self._cnt_nao}  —  {output}",
@@ -264,7 +287,17 @@ class UploadFrame(ctk.CTkFrame):
     def _iniciar_upload(self) -> None:
         if self._rodando:
             return
-        pasta = str(self._pasta_output) or "renamed"
+        if self._pasta_output and os.path.isdir(str(self._pasta_output)):
+            pasta = str(self._pasta_output)
+        else:
+            raw = self.entry_pasta_input.get().strip()
+            candidate = os.path.join(raw, "renomeadas") if raw else ""
+            if candidate and os.path.isdir(candidate):
+                pasta = candidate
+            elif raw and os.path.isdir(raw):
+                pasta = raw
+            else:
+                pasta = "renomeadas"
         if not os.path.isdir(pasta):
             self.lbl_progresso.configure(text=f"⚠ Pasta não encontrada: {pasta}")
             return
@@ -348,7 +381,6 @@ class UploadFrame(ctk.CTkFrame):
             self._reset_chips_renomear()
             self.hdr_upload.pack_forget()
             self.hdr_renomear.pack(fill="x")
-            self._frame_upload_bar.pack_forget()
             for arquivo, nfe, status in entry["rows"]:
                 self._inserir_linha_renomear(arquivo, nfe, status)
             self.entry_pasta_input.delete(0, "end")
@@ -362,8 +394,6 @@ class UploadFrame(ctk.CTkFrame):
             self._pasta_output = entry["pasta"]
             self.entry_data.delete(0, "end")
             self.entry_data.insert(0, entry["data_str"])
-            if not self._frame_upload_bar.winfo_ismapped():
-                self._frame_upload_bar.pack(side="right")
         self.scroll._parent_canvas.yview_moveto(0)
         self.lbl_progresso.configure(text=f"Histórico: {entry['label']}")
         self.progressbar.set(1)
@@ -374,6 +404,10 @@ class UploadFrame(ctk.CTkFrame):
 
     def _cancelar(self) -> None:
         self._stop_event.set()
+
+    def _voltar(self) -> None:
+        self._stop_event.set()
+        self._on_voltar()
 
     def _sair(self) -> None:
         self._stop_event.set()

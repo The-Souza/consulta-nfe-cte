@@ -26,7 +26,7 @@ class RenomearWorker:
 
     def run(self) -> None:
         pasta  = self._pasta
-        output = Path(pasta) / "renamed"
+        output = Path(pasta) / "renomeadas"
         output.mkdir(exist_ok=True)
 
         files = [f for f in os.listdir(pasta) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
