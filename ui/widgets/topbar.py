@@ -3,10 +3,18 @@ from typing import Callable
 import customtkinter as ctk
 
 
-def fazer_topbar(parent, titulo: str, usuario_nome: str, on_sair: Callable) -> None:
+def fazer_topbar(parent, titulo: str, usuario_nome: str, on_sair: Callable, on_voltar: Callable | None = None) -> None:
     topbar = ctk.CTkFrame(parent, height=40, corner_radius=0)
     topbar.pack(fill="x")
     topbar.pack_propagate(False)
+
+    if on_voltar:
+        ctk.CTkButton(
+            topbar, text="← Voltar", width=90, height=32,
+            fg_color="transparent", hover_color="#444",
+            border_width=1, border_color="gray",
+            command=on_voltar,
+        ).pack(side="left", padx=(14, 0), pady=9)
 
     ctk.CTkLabel(
         topbar, text=titulo,

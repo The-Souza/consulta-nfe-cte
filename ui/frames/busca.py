@@ -12,14 +12,15 @@ from ui.widgets.topbar import fazer_topbar
 from ui.workers.busca import BuscaWorker
 from utils.excel import exportar_excel
 
-_COLS = [("Nº", 50), ("NF-e", 80), ("CT-e", 100), ("Status", 160)]
+_COLS = [("Nº", 50), ("NF-e", 80), ("CT-e", 100), ("Imagem", 80), ("Status", 160)]
 
 
 class BuscaFrame(ctk.CTkFrame):
-    def __init__(self, parent, session, usuario_nome, on_logout):
+    def __init__(self, parent, session, usuario_nome, on_logout, on_voltar=None):
         super().__init__(parent, fg_color="transparent")
         self._session      = session
         self._on_logout    = on_logout
+        self._on_voltar    = on_voltar
         self._resultados = []
         self._buscando   = False
         self._stop_event = threading.Event()
@@ -31,7 +32,8 @@ class BuscaFrame(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def _build(self, usuario_nome: str) -> None:
-        fazer_topbar(self, "Consulta NF-e / CT-e", usuario_nome, self._sair)
+        fazer_topbar(self, "Consulta NF-e / CT-e", usuario_nome, self._sair,
+                     on_voltar=self._voltar if self._on_voltar else None)
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=16, pady=12)
         self._build_inputs(main)
@@ -124,7 +126,7 @@ class BuscaFrame(ctk.CTkFrame):
             ((f, b) for k, (f, b) in _COR.items() if k in r["Status"]),
             (None, None),
         )
-        textos = [str(self._row_count), str(r["NF-e"]), r["CT-e"]]
+        textos = [str(self._row_count), str(r["NF-e"]), r["CT-e"], r.get("Imagem", "-")]
         inserir_linha(parent, self._row_count, _COLS, textos, r["Status"], cor_fg, cor_bg)
 
     def _limpar_tabela(self) -> None:
@@ -135,6 +137,10 @@ class BuscaFrame(ctk.CTkFrame):
     # ------------------------------------------------------------------
     # AÇÕES
     # ------------------------------------------------------------------
+
+    def _voltar(self) -> None:
+        self._stop_event.set()
+        self._on_voltar()
 
     def _sair(self) -> None:
         self._stop_event.set()
@@ -232,6 +238,7 @@ class BuscaFrame(ctk.CTkFrame):
         self.progressbar.set(0)
         self._reset_chips()
         self.btn_exportar.configure(state="disabled")
+        self.entry_inicio.focus()
 
     # ------------------------------------------------------------------
     # EXPORTAR EXCEL

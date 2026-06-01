@@ -56,6 +56,7 @@ class App(ctk.CTk):
         self._busca_frame = BuscaFrame(
             self, self.session, self._usuario_nome,
             on_logout=self._voltar_login,
+            on_voltar=self._voltar_home,
         )
         self._busca_frame.pack(fill="both", expand=True)
 
@@ -68,8 +69,20 @@ class App(ctk.CTk):
         self._upload_frame = UploadFrame(
             self, self.session, self._usuario_nome,
             on_logout=self._voltar_login,
+            on_voltar=self._voltar_home,
         )
         self._upload_frame.pack(fill="both", expand=True)
+
+    def _voltar_home(self) -> None:
+        for frame in (self._busca_frame, self._upload_frame):
+            if frame:
+                frame.destroy()
+        self._busca_frame  = None
+        self._upload_frame = None
+        self.geometry("520x500")
+        self.resizable(False, False)
+        if self._home_frame:
+            self._home_frame.pack(fill="both", expand=True)
 
     def _voltar_login(self) -> None:
         self.session.cookies.clear()

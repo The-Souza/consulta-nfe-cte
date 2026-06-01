@@ -6,7 +6,7 @@ def exportar_excel(resultados: list[dict]) -> str:
     fim     = resultados[-1]["NF-e"]
     arquivo = f"consulta_nfe_{inicio}_{fim}.xlsx"
     df = pd.DataFrame([
-        {"NF-e": r["NF-e"], "CT-e": r["CT-e"], "Status": r["Status"].split(" ", 1)[-1]}
+        {"NF-e": r["NF-e"], "CT-e": r["CT-e"], "Imagem": r.get("Imagem", "-"), "Status": r["Status"].split(" ", 1)[-1]}
         for r in resultados
     ])
     df.to_excel(arquivo, index=False)

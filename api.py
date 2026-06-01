@@ -33,8 +33,8 @@ def fazer_login(session: requests.Session, email: str, senha: str) -> str:
     return data.get("usuario", {}).get("nome", "")
 
 
-def consultar_canhoto(session: requests.Session, nfe: int) -> tuple[str, str]:
-    """GET de um canhoto. Retorna (numero_cte, status_label)."""
+def consultar_canhoto(session: requests.Session, nfe: int) -> tuple[str, str, str]:
+    """GET de um canhoto. Retorna (numero_cte, status_label, possui_imagem)."""
     resp = session.get(
         CANHOTOS_URL,
         headers=HEADERS_CONSULTA,
@@ -43,11 +43,13 @@ def consultar_canhoto(session: requests.Session, nfe: int) -> tuple[str, str]:
     )
     data = resp.json()
     if not data.get("data"):
-        return "-", "❌ Não cadastrada"
-    cte = data["data"][0].get("numeroCte")
+        return "-", "❌ Não cadastrada", "-"
+    item = data["data"][0]
+    cte = item.get("numeroCte")
+    possui_imagem = item.get("possuiImagem", "-")
     if cte:
-        return str(cte), "✅ OK"
-    return "-", "⚠ Sem CT-e"
+        return str(cte), "✅ OK", possui_imagem
+    return "-", "⚠ Sem CT-e", possui_imagem
 
 
 def consultar_canhoto_upload(session: requests.Session, nfe: str) -> tuple[str | None, str]:
