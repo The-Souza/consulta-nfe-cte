@@ -31,11 +31,11 @@ class UploadWorker:
     def run(self) -> None:
         pasta        = self._pasta
         pendente_dir = Path(pasta).parent / "pendentes"
-        nao_pend_dir = Path(pasta).parent / "nao_pendentes"
+        nao_pend_dir = Path(pasta).parent / "nao-pendentes"
         pendente_dir.mkdir(exist_ok=True)
         nao_pend_dir.mkdir(exist_ok=True)
 
-        files = [f for f in os.listdir(pasta) if f.lower().endswith(".jpg")]
+        files = [f for f in os.listdir(pasta) if f.lower().endswith((".jpg", ".jpeg"))]
         total = len(files)
         t0 = time.time()
 
@@ -47,23 +47,30 @@ class UploadWorker:
             nfe  = Path(arquivo).stem
             path = Path(pasta) / arquivo
 
-            try:
-                oid, status_api = api.consultar_canhoto_upload(self._session, nfe)
-                if oid is None:
-                    status = "❌ Não encontrada"
-                elif status_api != "PENDENTE":
-                    shutil.move(str(path), str(nao_pend_dir / arquivo))
-                    status = f"⚠ {status_api}"
-                else:
-                    full_data = api.get_canhoto_completo(self._session, oid)
-                    ok, err = api.upload_canhoto(self._session, nfe, path, full_data, self._data_lote)
-                    if ok:
-                        shutil.move(str(path), str(pendente_dir / arquivo))
-                        status = "✅ Enviado"
+            attempts = 2 if i == 0 else 1
+            status = ""
+            for attempt in range(attempts):
+                try:
+                    oid, status_api = api.consultar_canhoto_upload(self._session, nfe)
+                    if oid is None:
+                        status = "❌ Não encontrada"
+                    elif status_api != "PENDENTE":
+                        shutil.move(str(path), str(nao_pend_dir / arquivo))
+                        status = f"⚠ {status_api}"
                     else:
-                        status = f"❌ {err}"
-            except Exception as e:
-                status = f"❌ {api.erro_amigavel(e)}"
+                        full_data = api.get_canhoto_completo(self._session, oid)
+                        ok, err = api.upload_canhoto(self._session, nfe, path, full_data, self._data_lote)
+                        if ok:
+                            shutil.move(str(path), str(pendente_dir / arquivo))
+                            status = "✅ Enviado"
+                        else:
+                            status = f"❌ {err}"
+                    break
+                except Exception as e:
+                    if attempt + 1 < attempts:
+                        time.sleep(0.8)
+                        continue
+                    status = f"❌ {api.erro_amigavel(e)}"
 
             prog    = (i + 1) / total
             elapsed = time.time() - t0
