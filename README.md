@@ -17,7 +17,7 @@ Aplicativo desktop para consultar associações NF-e → CT-e e fazer upload de 
 
 ### Upload Canhotos
 
-- **Etapa 1 — Renomear:** lê imagens (`.jpg` e `.jpeg`) de uma pasta, detecta o número de NF-e via OCR (Tesseract) e renomeia os arquivos para `<nfe>.jpg` em `<pasta>/renomeadas/`
+- **Etapa 1 — Renomear:** lê imagens (`.jpg`, `.jpeg` e `.png`) de uma pasta, detecta o número de NF-e via OCR (Tesseract) e renomeia os arquivos para `<nfe>.jpg` em `<pasta>/renomeadas/`
 - **Etapa 2 — Upload:** envia os canhotos renomeados para o sistema; NF-es não `PENDENTE` vão para `nao-pendentes/`, enviadas para `pendentes/`
 - Input de data com máscara automática (DD/MM/AAAA)
 - Histórico de renomeações e uploads com restauração em um clique
