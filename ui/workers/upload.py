@@ -35,7 +35,7 @@ class UploadWorker:
         pending_dir.mkdir(exist_ok=True)
         non_pending_dir.mkdir(exist_ok=True)
 
-        files = [f for f in os.listdir(folder) if f.lower().endswith((".jpg", ".jpeg"))]
+        files = [f for f in os.listdir(folder) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
         total = len(files)
         t0 = time.time()
 
