@@ -4,6 +4,14 @@ Aplicativo desktop para consultar associações NF-e → CT-e e fazer upload de 
 
 > **Origem:** este projeto foi desenvolvido originalmente para uso interno em uma transportadora. O código foi estruturado de forma genérica (via `.env`) para que qualquer empresa com uma API compatível possa adaptá-lo ao seu ambiente.
 
+## Download
+
+A última versão do executável está sempre disponível em:
+
+[**⬇ Baixar última versão**](https://github.com/The-Souza/consulta-nfe-cte/releases/latest/download/consulta-nfe-cte.zip)
+
+> Após o download, extraia o `.zip`, adicione seu arquivo `.env` e o ícone na pasta antes de executar `consulta-nfe-cte.exe`.
+
 ## Funcionalidades
 
 ### Consulta NF-e / CT-e
