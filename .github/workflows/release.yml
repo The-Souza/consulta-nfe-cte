@@ -1,9 +1,12 @@
 name: Release
 
-on:
+"on":
   push:
     tags:
       - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   build:
