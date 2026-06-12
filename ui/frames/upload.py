@@ -155,6 +155,7 @@ class UploadFrame(ctk.CTkFrame):
 
     def _clear_rename(self) -> None:
         self.entry_input_folder.delete(0, "end")
+        self.entry_date.delete(0, "end")
         self._output_folder = ""
         self.hdr_upload.pack_forget()
         self.hdr_rename.pack(fill="x")
@@ -223,7 +224,7 @@ class UploadFrame(ctk.CTkFrame):
     def _start_rename(self) -> None:
         if self._running:
             return
-        folder = self.entry_input_folder.get().strip() or "images_raw"
+        folder = self.entry_input_folder.get().strip() or "images"
         if not os.path.isdir(folder):
             self.lbl_progress.configure(text=f"⚠ Pasta não encontrada: {folder}")
             return
