@@ -1,4 +1,5 @@
 import base64
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -35,21 +36,24 @@ def login(session: requests.Session, email: str, password: str) -> str:
 
 def get_invoice(session: requests.Session, invoice_num: int) -> tuple[str, str, str]:
     """GET invoice by number. Returns (cte_number, status_label, has_image)."""
-    resp = session.get(
-        CANHOTOS_URL,
-        headers=QUERY_HEADERS,
-        params={"limit": 40, "numero": invoice_num, "offset": 0},
-        timeout=10,
-    )
-    data = resp.json()
-    if not data.get("data"):
-        return "-", "❌ Não cadastrada", "-"
-    item = data["data"][0]
-    cte = item.get("numeroCte")
-    has_image = item.get("possuiImagem", "-")
-    if cte:
-        return str(cte), "✅ OK", has_image
-    return "-", "⚠ Sem CT-e", has_image
+    for attempt in range(2):
+        resp = session.get(
+            CANHOTOS_URL,
+            headers=QUERY_HEADERS,
+            params={"limit": 40, "numero": invoice_num, "offset": 0},
+            timeout=10,
+        )
+        data = resp.json()
+        if data.get("data"):
+            item = data["data"][0]
+            cte = item.get("numeroCte")
+            has_image = item.get("possuiImagem", "-")
+            if cte:
+                return str(cte), "✅ OK", has_image
+            return "-", "⚠ Sem CT-e", has_image
+        if attempt == 0:
+            time.sleep(0.5)
+    return "-", "❌ Não cadastrada", "-"
 
 
 def get_invoice_for_upload(session: requests.Session, invoice_num: str) -> tuple[str | None, str]:
