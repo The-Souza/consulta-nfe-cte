@@ -7,6 +7,12 @@ import requests
 
 from config import LOGIN_URL, CANHOTOS_URL, QUERY_HEADERS
 
+# The first request after opening the app is often much slower than the
+# server's usual response time (cold connection), so query timeouts are
+# generous to avoid false "Tempo de resposta esgotado" errors.
+QUERY_TIMEOUT = 30
+UPLOAD_TIMEOUT = 45
+
 
 def friendly_error(e: Exception) -> str:
     if isinstance(e, requests.exceptions.ConnectionError):
@@ -22,7 +28,7 @@ def login(session: requests.Session, email: str, password: str) -> str:
     resp = session.post(
         LOGIN_URL,
         json={"email": email, "senha": password, "url": f"https://{domain}/"},
-        timeout=10,
+        timeout=QUERY_TIMEOUT,
     )
     if not resp.ok:
         raise ValueError("E-mail ou senha inválidos.")
@@ -41,7 +47,7 @@ def get_invoice(session: requests.Session, invoice_num: int) -> tuple[str, str, 
             CANHOTOS_URL,
             headers=QUERY_HEADERS,
             params={"limit": 40, "numero": invoice_num, "offset": 0},
-            timeout=10,
+            timeout=QUERY_TIMEOUT,
         )
         data = resp.json()
         if data.get("data"):
@@ -70,7 +76,7 @@ def get_invoice_for_upload(session: requests.Session, invoice_num: str) -> tuple
             "numero": invoice_num,
             "offset": 0,
         },
-        timeout=10,
+        timeout=QUERY_TIMEOUT,
     )
     data = resp.json()
     if not data.get("data"):
@@ -82,7 +88,7 @@ def get_invoice_for_upload(session: requests.Session, invoice_num: str) -> tuple
 def get_invoice_details(session: requests.Session, oid: str) -> dict:
     """GET full invoice record by oid."""
     headers = {**QUERY_HEADERS, "programa": "Canhoto"}
-    resp = session.get(f"{CANHOTOS_URL}/{oid}", headers=headers, timeout=10)
+    resp = session.get(f"{CANHOTOS_URL}/{oid}", headers=headers, timeout=QUERY_TIMEOUT)
     resp.raise_for_status()
     return resp.json()
 
@@ -109,7 +115,7 @@ def upload_invoice(
         "validaDataEntrega": True,
     }
     headers = {**QUERY_HEADERS, "programa": "Canhoto"}
-    resp = session.post(f"{CANHOTOS_URL}/salvar", headers=headers, json=payload, timeout=30)
+    resp = session.post(f"{CANHOTOS_URL}/salvar", headers=headers, json=payload, timeout=UPLOAD_TIMEOUT)
     if not resp.ok:
         return False, resp.text[:200]
     return True, None
