@@ -1,17 +1,27 @@
 import threading
 from datetime import datetime
+from typing import Callable
 
 import customtkinter as ctk
 
 from ui.widgets.chip import make_chip
+from ui.widgets.dropdown import FilterDropdown
 from ui.widgets.history import HistoryPanel
-from ui.widgets.progress import make_progress
 from ui.widgets.table import make_header, insert_row, clear_scroll
 from ui.widgets.topbar import make_topbar
 from ui.workers.search import SearchWorker
-from utils.excel import export_excel
+from utils.excel import export_excel, format_image
 
 _COLS = [("Nº", 50), ("NF-e", 80), ("CT-e", 100), ("Imagem", 80), ("Status", 160)]
+
+_FILTERS: dict[str, Callable[[dict], bool]] = {
+    "Todos":          lambda r: True,
+    "Sem imagem":     lambda r: r.get("Imagem") == "Não",
+    "Com imagem":     lambda r: r.get("Imagem") == "Sim",
+    "Sem CT-e":       lambda r: "Sem CT-e" in r["Status"],
+    "Não cadastrada": lambda r: "Não cadastrada" in r["Status"],
+    "Com CT-e (OK)":  lambda r: "OK" in r["Status"],
+}
 
 
 class SearchFrame(ctk.CTkFrame):
@@ -36,7 +46,7 @@ class SearchFrame(ctk.CTkFrame):
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=16, pady=12)
         self._build_inputs(main)
-        self.lbl_progress, self.progressbar = make_progress(main)
+        self._build_progress_row(main)
         self._build_table(main)
         self._build_footer(main)
         self._build_history(main)
@@ -71,6 +81,23 @@ class SearchFrame(ctk.CTkFrame):
         self.entry_start.bind("<Return>", lambda e: self.entry_end.focus())
         self.entry_end.bind("<Return>",   lambda e: self._start_search())
 
+    def _build_progress_row(self, main: ctk.CTkFrame) -> None:
+        row = ctk.CTkFrame(main, fg_color="transparent")
+        row.pack(fill="x", pady=(4, 8))
+
+        self.lbl_progress = ctk.CTkLabel(row, text="", anchor="w")
+        self.lbl_progress.pack(side="left", fill="x", expand=True)
+
+        ctk.CTkLabel(row, text="Filtrar:").pack(side="left", padx=(8, 4))
+        self.option_filter = FilterDropdown(
+            row, options=list(_FILTERS.keys()), command=self._on_filter_change, width=160,
+        )
+        self.option_filter.pack(side="left")
+
+        self.progressbar = ctk.CTkProgressBar(main)
+        self.progressbar.pack(fill="x", pady=(0, 10))
+        self.progressbar.set(0)
+
     def _build_table(self, main: ctk.CTkFrame) -> None:
         make_header(main, _COLS).pack(fill="x")
         self.scroll = ctk.CTkScrollableFrame(main)
@@ -86,6 +113,8 @@ class SearchFrame(ctk.CTkFrame):
         self.chip_ok      = make_chip(stat, "#4CAF50", "#1a3a1a")
         self.chip_no_cte  = make_chip(stat, "#FFC107", "#3a3000")
         self.chip_not_found = make_chip(stat, "#F44336", "#3a0f0f")
+        self.chip_img_yes = make_chip(stat, "#4FC3F7", "#0d2b3a")
+        self.chip_img_no  = make_chip(stat, "#BDBDBD", "#333333")
         self._reset_chips()
 
         self.btn_export = ctk.CTkButton(
@@ -105,14 +134,20 @@ class SearchFrame(ctk.CTkFrame):
         self.chip_ok.configure(text="✅  0  Com CT-e")
         self.chip_no_cte.configure(text="⚠  0  Sem CT-e")
         self.chip_not_found.configure(text="❌  0  Não cadastrada")
+        self.chip_img_yes.configure(text="☑  0  Com imagem")
+        self.chip_img_no.configure(text="❌  0  Sem imagem")
 
     def _update_chips(self) -> None:
-        ok  = sum(1 for r in self._results if "OK"             in r["Status"])
-        sem = sum(1 for r in self._results if "Sem CT-e"       in r["Status"])
-        nao = sum(1 for r in self._results if "Não cadastrada" in r["Status"])
+        ok      = sum(1 for r in self._results if "OK"             in r["Status"])
+        no_cte     = sum(1 for r in self._results if "Sem CT-e"       in r["Status"])
+        not_found     = sum(1 for r in self._results if "Não cadastrada" in r["Status"])
+        img_yes = sum(1 for r in self._results if r.get("Imagem") == "Sim")
+        img_no  = sum(1 for r in self._results if r.get("Imagem") == "Não")
         self.chip_ok.configure(text=f"✅  {ok}  Com CT-e")
-        self.chip_no_cte.configure(text=f"⚠  {sem}  Sem CT-e")
-        self.chip_not_found.configure(text=f"❌  {nao}  Não cadastrada")
+        self.chip_no_cte.configure(text=f"⚠  {no_cte}  Sem CT-e")
+        self.chip_not_found.configure(text=f"❌  {not_found}  Não cadastrada")
+        self.chip_img_yes.configure(text=f"☑  {img_yes}  Com imagem")
+        self.chip_img_no.configure(text=f"❌  {img_no}  Sem imagem")
 
     def _insert_row(self, parent, r: dict) -> None:
         self._row_count += 1
@@ -125,7 +160,7 @@ class SearchFrame(ctk.CTkFrame):
             ((f, b) for k, (f, b) in _COR.items() if k in r["Status"]),
             (None, None),
         )
-        texts = [str(self._row_count), str(r["NF-e"]), r["CT-e"], r.get("Imagem", "-")]
+        texts = [str(self._row_count), str(r["NF-e"]), r["CT-e"], format_image(r.get("Imagem"))]
         insert_row(parent, self._row_count, _COLS, texts, r["Status"], text_color, bg_color)
 
     def _clear_table(self) -> None:
@@ -161,6 +196,7 @@ class SearchFrame(ctk.CTkFrame):
         self._clear_table()
         self._searching = True
         self._stop_event.clear()
+        self.option_filter.set("Todos")
         self._reset_chips()
         self.progressbar.set(0)
         self.btn_clear.configure(state="disabled")
@@ -188,6 +224,21 @@ class SearchFrame(ctk.CTkFrame):
         self._stop_event.set()
 
     # ------------------------------------------------------------------
+    # FILTRO
+    # ------------------------------------------------------------------
+
+    def _on_filter_change(self, _value: str = "") -> None:
+        self._redraw_table()
+
+    def _redraw_table(self) -> None:
+        clear_scroll(self.scroll)
+        self._row_count = 0
+        predicate = _FILTERS[self.option_filter.get()]
+        for r in self._results:
+            if predicate(r):
+                self._insert_row(self.scroll, r)
+
+    # ------------------------------------------------------------------
     # ATUALIZAÇÃO DA TABELA
     # ------------------------------------------------------------------
 
@@ -196,7 +247,8 @@ class SearchFrame(ctk.CTkFrame):
         self.progressbar.set(prog)
         m, s = divmod(int(elapsed), 60)
         self.lbl_progress.configure(text=f"NF-e {r['NF-e']}  ({current}/{total})  {m:02d}:{s:02d}")
-        self._insert_row(self.scroll, r)
+        if _FILTERS[self.option_filter.get()](r):
+            self._insert_row(self.scroll, r)
         self._update_chips()
 
     # ------------------------------------------------------------------
@@ -235,6 +287,7 @@ class SearchFrame(ctk.CTkFrame):
         self._clear_table()
         self.lbl_progress.configure(text="")
         self.progressbar.set(0)
+        self.option_filter.set("Todos")
         self._reset_chips()
         self.btn_export.configure(state="disabled")
         self.entry_start.focus()
@@ -268,8 +321,8 @@ class SearchFrame(ctk.CTkFrame):
 
         self._clear_table()
         self._results = list(entry["results"])
-        for r in self._results:
-            self._insert_row(self.scroll, r)
+        self.option_filter.set("Todos")
+        self._redraw_table()
         self.scroll._parent_canvas.yview_moveto(0)
 
         self._update_chips()
