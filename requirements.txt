@@ -3,6 +3,7 @@ keyring
 requests
 pandas
 openpyxl
+pillow
 python-dotenv
 opencv-python
 pytesseract

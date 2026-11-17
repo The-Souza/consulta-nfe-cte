@@ -13,6 +13,7 @@ $iconArgs = if (Test-Path $iconFile) { @("--icon", $iconFile) } else { @() }
     --windowed `
     --name "consulta-nfe-cte" `
     --collect-all customtkinter `
+    --add-data "assets;assets" `
     @iconArgs `
     script.py
 
