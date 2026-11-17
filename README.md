@@ -87,6 +87,21 @@ O executável será gerado em `dist\consulta-nfe-cte\`. Antes de distribuir, cop
 
 > O arquivo `.env` nunca é embutido no executável — ele deve estar na mesma pasta que `consulta-nfe-cte.exe` na máquina de destino.
 
+## Desenvolvimento
+
+```powershell
+# Dependências de desenvolvimento (inclui as do app)
+pip install -r requirements-dev.txt
+
+# Lint e testes (os mesmos que rodam no CI)
+ruff check .
+pytest
+```
+
+- O CI roda lint e testes em todo push e PR para `develop` e `master`.
+- Tags com hífen (ex.: `v2.0.0-alpha.0`) geram o executável como **pré-lançamento**; o link "Baixar última versão" aponta sempre para a última versão estável.
+- As mudanças de cada versão ficam no [CHANGELOG](CHANGELOG.md).
+
 ## Licença
 
 Distribuído sob a licença [MIT](LICENSE). Sinta-se livre para usar, modificar e distribuir.
@@ -120,6 +135,9 @@ consulta-nfe-cte/
 │       └── upload.py   # Thread de upload de canhotos
 ├── utils/
 │   └── excel.py        # Exportação para Excel
+├── tests/              # Testes (pytest)
 ├── .env.example        # Modelo de variáveis de ambiente
-└── requirements.txt
+├── pyproject.toml      # Configuração do ruff e do pytest
+├── requirements.txt
+└── requirements-dev.txt
 ```
