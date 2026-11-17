@@ -26,3 +26,6 @@ claude*
 
 # Ícones (podem conter marca da empresa)
 *.ico
+
+# Arquivos de documentação (podem conter informações internas da empresa)
+docs
