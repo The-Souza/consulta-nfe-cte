@@ -29,7 +29,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           $version = .venv\Scripts\python.exe -c "import config; print(config.APP_VERSION)"
-          if ("v$version" -ne $env:REF_NAME) {
+          if ("v$version" -cne $env:REF_NAME) {
             Write-Error "APP_VERSION ($version) does not match tag $env:REF_NAME"
             exit 1
           }
