@@ -28,4 +28,4 @@ claude*
 *.ico
 
 # Arquivos de documentação (podem conter informações internas da empresa)
-docs
+/docs/
