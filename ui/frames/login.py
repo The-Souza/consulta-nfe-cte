@@ -158,7 +158,7 @@ class LoginFrame(ctk.CTkFrame):
             if remember:
                 credentials.save(email, password)
             else:
-                credentials.clear(email)
+                credentials.forget_password(email)
             self.after(0, self._on_success, name)
         except ValueError as e:
             self.after(0, self._set_error, str(e))
