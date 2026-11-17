@@ -112,6 +112,16 @@ def test_clear_ignores_keyring_backend_errors(config_file, fake_keyring):
     assert "email" not in json.loads(config_file.read_text(encoding="utf-8"))
 
 
+def test_clear_ignores_non_keyring_backend_errors(config_file, fake_keyring):
+    config_file.write_text(json.dumps({"email": "user@example.com"}), encoding="utf-8")
+    fake_keyring.delete_password.side_effect = RuntimeError("credential manager access denied")
+
+    credentials.clear("other@example.com")
+
+    assert fake_keyring.delete_password.call_count == 2
+    assert "email" not in json.loads(config_file.read_text(encoding="utf-8"))
+
+
 def test_clear_ignores_config_write_errors(config_file, fake_keyring):
     config_file.write_text(json.dumps({"email": "user@example.com"}), encoding="utf-8")
 

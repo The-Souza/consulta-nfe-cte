@@ -55,7 +55,8 @@ def clear(email: str = "") -> None:
             keyring.delete_password(_KEYRING_SERVICE, address)
         except keyring.errors.PasswordDeleteError:
             pass  # nothing stored for this email
-        except keyring.errors.KeyringError:
+        except Exception:
+            # Backends may raise raw OS errors (e.g. access denied), not only KeyringError.
             logger.warning("Could not remove saved password from the keyring", exc_info=True)
 
     if data and "email" in data:
