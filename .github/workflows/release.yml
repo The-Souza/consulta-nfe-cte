@@ -35,5 +35,6 @@ jobs:
         with:
           files: consulta-nfe-cte.zip
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
