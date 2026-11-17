@@ -6,6 +6,7 @@ from ui.frames.login import LoginFrame
 from ui.frames.home import HomeFrame
 from ui.frames.search import SearchFrame
 from ui.frames.upload import UploadFrame
+from ui.titlebar import apply_titlebar
 
 
 class App(ctk.CTk):
@@ -17,6 +18,9 @@ class App(ctk.CTk):
 
         if ICON_FILE.exists():
             self.iconbitmap(str(ICON_FILE))
+
+        # Deferred so it runs after CustomTkinter applies its own title bar mode on startup.
+        self.after(0, apply_titlebar, self)
 
         self.session = requests.Session()
         self.session.cookies.set("timezone-offset", "180")
