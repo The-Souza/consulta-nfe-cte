@@ -25,10 +25,12 @@ jobs:
           .venv\Scripts\pip install pyinstaller
 
       - name: Check app version matches tag
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
           $version = .venv\Scripts\python.exe -c "import config; print(config.APP_VERSION)"
-          if ("v$version" -ne "${{ github.ref_name }}") {
-            Write-Error "APP_VERSION ($version) does not match tag ${{ github.ref_name }}"
+          if ("v$version" -ne $env:REF_NAME) {
+            Write-Error "APP_VERSION ($version) does not match tag $env:REF_NAME"
             exit 1
           }
 
