@@ -59,5 +59,7 @@ class NavCard(ctk.CTkFrame):
     def _on_leave(self, _event=None) -> None:
         # Moving between child widgets fires <Leave>; only reset when the pointer really left the card.
         hovered = self.winfo_containing(*self.winfo_pointerxy())
-        if hovered is None or not str(hovered).startswith(str(self)):
+        # Compare with a trailing dot: '.!navcard2' must not count as inside '.!navcard'.
+        inside = hovered is not None and (str(hovered) == str(self) or str(hovered).startswith(f"{self}."))
+        if not inside:
             self.configure(fg_color=theme.SURFACE)
