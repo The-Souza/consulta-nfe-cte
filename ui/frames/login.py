@@ -1,3 +1,4 @@
+import logging
 import threading
 
 import customtkinter as ctk
@@ -7,6 +8,8 @@ import credentials
 from config import APP_SUBTITLE, APP_VERSION, ICON_FILE
 from ui import theme
 from ui.icons import get_icon, load_logo
+
+logger = logging.getLogger(__name__)
 
 _CARD_PAD = theme.SPACE_XXL
 _CARD_PAD_Y = 28
@@ -38,7 +41,7 @@ class LoginFrame(ctk.CTkFrame):
 
         self.remember_var = ctk.BooleanVar(value=True)
         ctk.CTkCheckBox(
-            card, text="Lembrar acesso neste computador", variable=self.remember_var,
+            card, text="Lembrar senha neste computador", variable=self.remember_var,
             checkbox_width=16, checkbox_height=16, corner_radius=4, border_width=1,
             fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER, border_color=theme.BORDER_INPUT,
             text_color=theme.TEXT_LABEL, font=theme.font(theme.FONT_SIZE_BODY),
@@ -130,13 +133,13 @@ class LoginFrame(ctk.CTkFrame):
             self.entry_email.insert(0, email)
         if password:
             self.entry_password.insert(0, password)
+        self.remember_var.set(credentials.remember_by_default(email, password))
 
     def reset(self) -> None:
         self.entry_email.delete(0, "end")
         self.entry_password.delete(0, "end")
         if self._password_visible:
             self._toggle_password()
-        self.remember_var.set(True)
         self._show_error("")
         self.btn_login.configure(state="normal", text="Entrar")
         self._fill_credentials()
@@ -155,15 +158,25 @@ class LoginFrame(ctk.CTkFrame):
     def _login_thread(self, email: str, password: str, remember: bool) -> None:
         try:
             name = api.login(self._session, email, password)
+        except ValueError as e:
+            self.after(0, self._set_error, str(e))
+            return
+        except Exception as e:
+            self.after(0, self._set_error, api.friendly_error(e))
+            return
+        self._persist_login(email, password, remember)
+        self.after(0, self._on_success, name)
+
+    @staticmethod
+    def _persist_login(email: str, password: str, remember: bool) -> None:
+        # The login already succeeded: a keyring/disk failure here must not block the user.
+        try:
             if remember:
                 credentials.save(email, password)
             else:
                 credentials.forget_password(email)
-            self.after(0, self._on_success, name)
-        except ValueError as e:
-            self.after(0, self._set_error, str(e))
-        except Exception as e:
-            self.after(0, self._set_error, api.friendly_error(e))
+        except Exception:
+            logger.warning("Could not update saved login", exc_info=True)
 
     def _show_error(self, msg: str) -> None:
         self.lbl_error.configure(text=msg)
