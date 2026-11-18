@@ -270,7 +270,9 @@ class SearchFrame(ctk.CTkFrame):
         retried = r["NF-e"] in self._results
         self._results[r["NF-e"]] = r
         multiplicity = cte_multiplicity(self._rows())
-        shared_cte = multiplicity != self._multiplicity
+        # Rewrite the CT-e column only when a "×N" mark changed, not for every new CT-e seen once.
+        repeated = {cte: n for cte, n in multiplicity.items() if n > 1}
+        shared_cte = repeated != {cte: n for cte, n in self._multiplicity.items() if n > 1}
         self._multiplicity = multiplicity
 
         matches = bool(visible_rows([r], self._chip))
@@ -379,6 +381,7 @@ class SearchFrame(ctk.CTkFrame):
         self._results = {r["NF-e"]: r for r in entry["results"]}
         self._multiplicity = cte_multiplicity(self._rows())
         self._current_entry = entry
+        self._elapsed = 0.0  # the restored search's time isn't kept; a retry counts from zero
         self._render()
         self._update_counts()
         self._show_connection_banner()
