@@ -25,7 +25,7 @@ def insert_row(
     texts: list[str],
     status_text: str,
     tone: Tone,
-) -> None:
+) -> ctk.CTkFrame:
     row_bg = theme.SURFACE_2 if row_num % 2 == 0 else theme.TRANSPARENT
     mono = theme.font(theme.FONT_SIZE_SM, mono=True)
     row = ctk.CTkFrame(parent, height=30, fg_color=row_bg, corner_radius=0)
@@ -48,6 +48,7 @@ def insert_row(
     ctk.CTkLabel(
         badge, text=status_text, text_color=text_color, font=theme.font(theme.FONT_SIZE_XS), height=16,
     ).pack(side="left", padx=theme.SPACE_SM, pady=0)
+    return row
 
 
 def clear_scroll(scroll: ctk.CTkScrollableFrame) -> None:

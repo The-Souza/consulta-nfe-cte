@@ -2,6 +2,7 @@ import os
 import threading
 from datetime import datetime
 from tkinter import filedialog
+from typing import Callable
 
 import customtkinter as ctk
 
@@ -21,9 +22,10 @@ _COLS_U = [("Nº", 50), ("NF-e", 120), ("Status", 180)]
 
 
 class UploadFrame(ctk.CTkFrame):
-    def __init__(self, parent, session, user_name: str, on_logout, on_back=None):
+    def __init__(self, parent, session, user_name: str, on_logout, on_back=None, relogin: Callable[[], None] | None = None):
         super().__init__(parent, fg_color="transparent")
         self._session       = session
+        self._relogin       = relogin
         self._on_logout     = on_logout
         self._on_back     = on_back
         self._stop_event    = threading.Event()

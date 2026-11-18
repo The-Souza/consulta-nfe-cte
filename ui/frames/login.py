@@ -168,7 +168,7 @@ class LoginFrame(ctk.CTkFrame):
             self.after(0, self._set_error, api.friendly_error(e))
             return
         self._persist_login(email, password, remember)
-        self.after(0, self._on_success, name)
+        self.after(0, self._on_success, name, email, password)
 
     @staticmethod
     def _persist_login(email: str, password: str, remember: bool) -> None:

@@ -29,6 +29,10 @@ class HistoryPanel:
         self._update_btn()
         self._rebuild()
 
+    def refresh(self) -> None:
+        """Redraw the labels after an entry was updated in place."""
+        self._rebuild()
+
     def _toggle(self) -> None:
         self._visible = not self._visible
         self._update_btn()

@@ -2,6 +2,7 @@ import base64
 import threading
 import time
 from pathlib import Path
+from typing import Callable, TypeVar
 from urllib.parse import urlparse
 
 import requests
@@ -18,6 +19,8 @@ TIMEOUT = (5, 25)
 RETRY_DELAYS = (1, 2, 4)
 MAX_RETRY_AFTER = 30
 
+T = TypeVar("T")
+
 
 class ConnectionFailed(Exception):
     """The server stayed unreachable or unstable after every retry."""
@@ -29,6 +32,10 @@ class SessionExpired(Exception):
 
 class Cancelled(Exception):
     """The user cancelled the task while a retry was waiting."""
+
+
+class SessionLost(Exception):
+    """The session expired and logging in again did not work: the user must log in manually."""
 
 
 def _wait(seconds: float, stop: threading.Event | None = None) -> None:
@@ -110,6 +117,34 @@ def login(session: requests.Session, email: str, password: str) -> str:
         raise ValueError("Resposta inesperada do servidor.")
     session.cookies.set("auth-token", token, domain=domain)
     return data.get("usuario", {}).get("nome", "")
+
+
+def call_with_relogin(fn: Callable[[], T], relogin: Callable[[], object]) -> T:
+    """Run fn(); when the session expired, log in again once and repeat it."""
+    try:
+        return fn()
+    except SessionExpired:
+        pass
+    try:
+        relogin()
+    except Exception as e:
+        raise SessionLost("login again failed") from e
+    try:
+        return fn()
+    except SessionExpired as e:
+        raise SessionLost("session expired again after login") from e
+
+
+def warm_up(session: requests.Session, invoice_num: int) -> None:
+    """One light request before a search, so the slow first (cold) connection doesn't hit a real query.
+    Any failure is ignored: the search itself has retries."""
+    try:
+        session.get(
+            CANHOTOS_URL, headers=QUERY_HEADERS, params={"limit": 1, "numero": invoice_num, "offset": 0},
+            timeout=TIMEOUT,
+        )
+    except requests.RequestException:
+        pass
 
 
 def get_invoice(
