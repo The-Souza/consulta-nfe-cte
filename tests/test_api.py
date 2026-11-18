@@ -5,8 +5,15 @@ import requests
 import responses
 
 import api
+from utils.status import SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
 
 URL = "https://api.test/canhotos"
+
+
+@pytest.fixture
+def api_urls(monkeypatch):
+    monkeypatch.setattr(api, "CANHOTOS_URL", URL)
+    monkeypatch.setattr(api, "QUERY_HEADERS", {"programa": "test"})
 
 
 @pytest.fixture
@@ -153,6 +160,104 @@ def test_get_json_stops_when_the_wait_is_cancelled(session, monkeypatch):
     with pytest.raises(api.Cancelled):
         _get(session)
     assert len(responses.calls) == 1
+
+
+# get_invoice ----------------------------------------------------------------------
+
+def _invoice(**item):
+    return {"data": [item]}
+
+
+@responses.activate
+def test_get_invoice_with_cte(session, waits, api_urls):
+    responses.get(URL, json=_invoice(numeroCte=123, possuiImagem="Sim"))
+
+    assert api.get_invoice(session, 10) == ("123", SEARCH_OK, "Sim")
+    assert responses.calls[0].request.params == {"limit": "40", "numero": "10", "offset": "0"}
+
+
+@responses.activate
+def test_get_invoice_without_cte(session, waits, api_urls):
+    responses.get(URL, json=_invoice(numeroCte=None, possuiImagem="Não"))
+
+    assert api.get_invoice(session, 10) == ("-", SEARCH_NO_CTE, "Não")
+
+
+@responses.activate
+def test_get_invoice_empty_twice_is_not_found(session, waits, api_urls):
+    responses.get(URL, json={"data": []})
+
+    assert api.get_invoice(session, 10) == ("-", SEARCH_NOT_FOUND, "-")
+    assert len(responses.calls) == 2
+    assert waits == [0.5]
+
+
+@responses.activate
+def test_get_invoice_empty_then_found(session, waits, api_urls):
+    responses.get(URL, json={"data": []})
+    responses.get(URL, json=_invoice(numeroCte=123, possuiImagem="Sim"))
+
+    assert api.get_invoice(session, 10) == ("123", SEARCH_OK, "Sim")
+    assert waits == [0.5]
+
+
+@responses.activate
+def test_get_invoice_retries_unstable_server(session, waits, api_urls):
+    responses.get(URL, status=502)
+    responses.get(URL, json=_invoice(numeroCte=123, possuiImagem="Sim"))
+
+    assert api.get_invoice(session, 10) == ("123", SEARCH_OK, "Sim")
+    assert waits == [1]
+
+
+@responses.activate
+def test_get_invoice_raises_connection_failed(session, waits, api_urls):
+    responses.get(URL, body=requests.exceptions.ConnectTimeout())
+
+    with pytest.raises(api.ConnectionFailed):
+        api.get_invoice(session, 10)
+
+
+# get_invoice_for_upload / get_invoice_details --------------------------------------
+
+@responses.activate
+def test_get_invoice_for_upload_returns_oid_and_status(session, waits, api_urls):
+    responses.get(URL, json=_invoice(oid="abc", status="PENDENTE"))
+
+    assert api.get_invoice_for_upload(session, "10") == ("abc", "PENDENTE")
+
+
+@responses.activate
+def test_get_invoice_for_upload_not_found(session, waits, api_urls):
+    responses.get(URL, json={"data": []})
+
+    assert api.get_invoice_for_upload(session, "10") == (None, "Não encontrada")
+
+
+@responses.activate
+def test_get_invoice_for_upload_retries_unstable_server(session, waits, api_urls):
+    responses.get(URL, status=500)
+    responses.get(URL, json=_invoice(oid="abc", status="PENDENTE"))
+
+    assert api.get_invoice_for_upload(session, "10") == ("abc", "PENDENTE")
+
+
+@responses.activate
+def test_get_invoice_details_uses_canhoto_program(session, waits, api_urls):
+    responses.get(
+        f"{URL}/abc", json={"oid": "abc"},
+        match=[responses.matchers.header_matcher({"programa": "Canhoto"})],
+    )
+
+    assert api.get_invoice_details(session, "abc") == {"oid": "abc"}
+
+
+@responses.activate
+def test_get_invoice_details_session_expired(session, waits, api_urls):
+    responses.get(f"{URL}/abc", status=401)
+
+    with pytest.raises(api.SessionExpired):
+        api.get_invoice_details(session, "abc")
 
 
 # _wait --------------------------------------------------------------------------

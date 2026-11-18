@@ -9,13 +9,11 @@ import requests
 from config import LOGIN_URL, CANHOTOS_URL, QUERY_HEADERS
 from utils.status import SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
 
-# The first request after opening the app is often much slower than the
-# server's usual response time (cold connection), so query timeouts are
-# generous to avoid false "Tempo de resposta esgotado" errors.
-QUERY_TIMEOUT = 30
 UPLOAD_TIMEOUT = 45
 
-TIMEOUT = (5, 25)  # (connect, read)
+# (connect, read). The first request after opening the app is often slow (cold connection);
+# the retries in _get_json absorb that instead of a single very long timeout.
+TIMEOUT = (5, 25)
 RETRY_DELAYS = (1, 2, 4)
 MAX_RETRY_AFTER = 30
 
@@ -97,7 +95,7 @@ def login(session: requests.Session, email: str, password: str) -> str:
     resp = session.post(
         LOGIN_URL,
         json={"email": email, "senha": password, "url": f"https://{domain}/"},
-        timeout=QUERY_TIMEOUT,
+        timeout=TIMEOUT,
     )
     if not resp.ok:
         raise ValueError("E-mail ou senha inválidos.")
@@ -109,16 +107,15 @@ def login(session: requests.Session, email: str, password: str) -> str:
     return data.get("usuario", {}).get("nome", "")
 
 
-def get_invoice(session: requests.Session, invoice_num: int) -> tuple[str, str, str]:
+def get_invoice(
+    session: requests.Session, invoice_num: int, stop: threading.Event | None = None,
+) -> tuple[str, str, str]:
     """GET invoice by number. Returns (cte_number, status_label, has_image)."""
     for attempt in range(2):
-        resp = session.get(
-            CANHOTOS_URL,
-            headers=QUERY_HEADERS,
-            params={"limit": 40, "numero": invoice_num, "offset": 0},
-            timeout=QUERY_TIMEOUT,
+        data = _get_json(
+            session, CANHOTOS_URL, headers=QUERY_HEADERS,
+            params={"limit": 40, "numero": invoice_num, "offset": 0}, stop=stop,
         )
-        data = resp.json()
         if data.get("data"):
             item = data["data"][0]
             cte = item.get("numeroCte")
@@ -127,13 +124,16 @@ def get_invoice(session: requests.Session, invoice_num: int) -> tuple[str, str, 
                 return str(cte), SEARCH_OK, has_image
             return "-", SEARCH_NO_CTE, has_image
         if attempt == 0:
-            time.sleep(0.5)
+            _wait(0.5, stop)
     return "-", SEARCH_NOT_FOUND, "-"
 
 
-def get_invoice_for_upload(session: requests.Session, invoice_num: str) -> tuple[str | None, str]:
+def get_invoice_for_upload(
+    session: requests.Session, invoice_num: str, stop: threading.Event | None = None,
+) -> tuple[str | None, str]:
     """GET invoice for upload. Returns (oid, api_status) or (None, error_label)."""
-    resp = session.get(
+    data = _get_json(
+        session,
         CANHOTOS_URL,
         headers=QUERY_HEADERS,
         params={
@@ -145,21 +145,18 @@ def get_invoice_for_upload(session: requests.Session, invoice_num: str) -> tuple
             "numero": invoice_num,
             "offset": 0,
         },
-        timeout=QUERY_TIMEOUT,
+        stop=stop,
     )
-    data = resp.json()
     if not data.get("data"):
         return None, "Não encontrada"
     item = data["data"][0]
     return item.get("oid"), item.get("status", "")
 
 
-def get_invoice_details(session: requests.Session, oid: str) -> dict:
+def get_invoice_details(session: requests.Session, oid: str, stop: threading.Event | None = None) -> dict:
     """GET full invoice record by oid."""
     headers = {**QUERY_HEADERS, "programa": "Canhoto"}
-    resp = session.get(f"{CANHOTOS_URL}/{oid}", headers=headers, timeout=QUERY_TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
+    return _get_json(session, f"{CANHOTOS_URL}/{oid}", headers=headers, stop=stop)
 
 
 def upload_invoice(
