@@ -320,7 +320,7 @@ class UploadFrame(ctk.CTkFrame):
             on_update=self._update_upload,
             on_done=lambda: self._finish_upload(cancelled=False, folder=folder, date_str=date_str),
             on_cancel=lambda: self._finish_upload(cancelled=True),
-            on_session_lost=lambda: self._finish_upload(cancelled=True),
+            on_session_lost=lambda: self._finish_upload(cancelled=True, session_lost=True),
             relogin=self._relogin,
         )
         threading.Thread(target=worker.run, daemon=True).start()
@@ -333,14 +333,27 @@ class UploadFrame(ctk.CTkFrame):
         set_message(self.lbl_progress, f"NF-e {invoice_num}  ({current}/{total})  {m:02d}:{s:02d}")
         self._insert_upload_row(invoice_num, tone, text)
 
-    def _finish_upload(self, cancelled: bool, folder: str = "", date_str: str = "") -> None:
+    def _finish_upload(
+        self, cancelled: bool, folder: str = "", date_str: str = "", session_lost: bool = False,
+    ) -> None:
         self._running = False
         restore_button(self.btn_upload, self._btn_style)
-        if cancelled:
+        if session_lost:
+            set_message(self.lbl_progress, "Sessão expirada. Saia e entre de novo.", Tone.ERROR)
+        elif cancelled:
             set_message(self.lbl_progress, "Upload cancelado.")
         else:
             self.progressbar.set(1)
-            set_message(self.lbl_progress, "Upload concluído.")
+            failures = sum(1 for _, tone, _ in self._rows if tone is Tone.CONNECTION)
+            if failures:
+                # Those files stayed in the folder; running the upload again sends only them.
+                set_message(
+                    self.lbl_progress,
+                    f"Upload concluído com {failures} falha(s) de conexão. Inicie o upload de novo para enviar essas.",
+                    Tone.CONNECTION,
+                )
+            else:
+                set_message(self.lbl_progress, "Upload concluído.")
             self._add_history(
                 entry_type="upload",
                 label=(f"{self._cnt_ok} enviados  ·  {self._cnt_dup} ignorados  ·  "
