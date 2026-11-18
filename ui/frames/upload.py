@@ -320,6 +320,8 @@ class UploadFrame(ctk.CTkFrame):
             on_update=self._update_upload,
             on_done=lambda: self._finish_upload(cancelled=False, folder=folder, date_str=date_str),
             on_cancel=lambda: self._finish_upload(cancelled=True),
+            on_session_lost=lambda: self._finish_upload(cancelled=True),
+            relogin=self._relogin,
         )
         threading.Thread(target=worker.run, daemon=True).start()
 
