@@ -12,7 +12,7 @@ from ui.widgets.history import HistoryPanel
 from ui.widgets.progress import set_message
 from ui.widgets.table import make_header, insert_row, clear_scroll
 from ui.widgets.topbar import make_topbar
-from ui.workers.search import SearchWorker
+from ui.workers.search import SearchCallbacks, SearchWorker
 from utils.excel import export_excel, format_image
 from utils.status import SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK, Tone, search_tone
 
@@ -200,13 +200,17 @@ class SearchFrame(ctk.CTkFrame):
 
         worker = SearchWorker(
             session=self._session,
-            start=start,
-            end=end,
+            invoices=list(range(start, end + 1)),
             stop_event=self._stop_event,
             after_fn=self.after,
-            on_update=self._add_row,
-            on_done=lambda: self._finish(start, end, cancelled=False),
-            on_cancel=lambda: self._finish(start, end, cancelled=True),
+            callbacks=SearchCallbacks(
+                on_row=self._add_row,
+                on_notice=lambda text: set_message(self.lbl_progress, text, Tone.WARNING),
+                on_done=lambda failures: self._finish(start, end, cancelled=False),
+                on_cancel=lambda: self._finish(start, end, cancelled=True),
+                on_session_lost=lambda: self._finish(start, end, cancelled=True, session_lost=True),
+            ),
+            relogin=self._relogin,
         )
         threading.Thread(target=worker.run, daemon=True).start()
 
@@ -233,25 +237,33 @@ class SearchFrame(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def _add_row(self, r: dict, prog: float, current: int, total: int, elapsed: float) -> None:
-        self._results.append(r)
         self.progressbar.set(prog)
         m, s = divmod(int(elapsed), 60)
         set_message(self.lbl_progress, f"NF-e {r['NF-e']}  ({current}/{total})  {m:02d}:{s:02d}")
-        if _FILTERS[self.option_filter.get()](r):
-            self._insert_row(self.scroll, r)
+        existing = next((i for i, old in enumerate(self._results) if old["NF-e"] == r["NF-e"]), None)
+        if existing is None:
+            self._results.append(r)
+            if _FILTERS[self.option_filter.get()](r):
+                self._insert_row(self.scroll, r)
+        else:
+            # Retried invoice (second pass): replace its row in place.
+            self._results[existing] = r
+            self._redraw_table()
         self._update_chips()
 
     # ------------------------------------------------------------------
     # FINALIZAÇÃO
     # ------------------------------------------------------------------
 
-    def _finish(self, start: int, end: int, cancelled: bool) -> None:
+    def _finish(self, start: int, end: int, cancelled: bool, session_lost: bool = False) -> None:
         self._searching = False
         restore_button(self.btn_search, self._btn_search_style)
         self.btn_search.configure(state="normal")
         self.btn_clear.configure(state="normal")
 
-        if cancelled:
+        if session_lost:
+            set_message(self.lbl_progress, "Sessão expirada. Saia e entre de novo.", Tone.ERROR)
+        elif cancelled:
             set_message(self.lbl_progress, "Busca cancelada.")
         else:
             self.progressbar.set(1)
