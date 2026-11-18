@@ -145,6 +145,9 @@ class LoginFrame(ctk.CTkFrame):
         self._fill_credentials()
 
     def _do_login(self) -> None:
+        # Enter on the password field still fires while the button is disabled.
+        if self.btn_login.cget("state") == "disabled":
+            return
         email = self.entry_email.get().strip()
         password = self.entry_password.get()
         if not email or not password:
