@@ -5,6 +5,7 @@ from typing import Callable
 import customtkinter as ctk
 
 from ui import theme
+from ui.widgets.banner import Banner
 from ui.widgets.buttons import restore_button, show_cancel
 from ui.widgets.chip import make_chip
 from ui.widgets.dropdown import FilterDropdown
@@ -14,9 +15,11 @@ from ui.widgets.table import make_header, insert_row, clear_scroll
 from ui.widgets.topbar import make_topbar
 from ui.workers.search import SearchCallbacks, SearchWorker
 from utils.excel import export_excel, format_image
+from utils.nfe_query import CONFIRM_ABOVE, parse_query
 from utils.status import CONNECTION_FAILED, SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK, Tone, search_tone
 
 _COLS = [("Nº", 50), ("NF-e", 80), ("CT-e", 100), ("Imagem", 80), ("Status", 160)]
+_HISTORY_QUERY_CHARS = 40
 
 _FILTERS: dict[str, Callable[[dict], bool]] = {
     "Todos":            lambda r: True,
@@ -43,6 +46,7 @@ class SearchFrame(ctk.CTkFrame):
         self._stop_event = threading.Event()
         self._row_count    = 0
         self._btn_search_style: dict = {}
+        self._last_query: str | None = None  # field text the parse label was computed for
         self._build(user_name)
 
     # ------------------------------------------------------------------
@@ -64,26 +68,34 @@ class SearchFrame(ctk.CTkFrame):
         row = ctk.CTkFrame(main, fg_color="transparent")
         row.pack(fill="x", pady=(0, 4))
 
-        digits_only = (self.register(lambda v: v.isdigit() or v == ""), "%P")
+        field = ctk.CTkFrame(row, fg_color="transparent")
+        field.pack(side="left", padx=(0, 12))
+        labels = ctk.CTkFrame(field, fg_color="transparent")
+        labels.pack(fill="x")
+        ctk.CTkLabel(
+            labels, text="NF-es", text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM), height=18,
+        ).pack(side="left")
+        self.lbl_parse = ctk.CTkLabel(labels, text="", font=theme.font(theme.FONT_SIZE_SM), height=18)
+        self.lbl_parse.pack(side="right")
+        self.entry_query = ctk.CTkEntry(
+            field, width=420, height=38, placeholder_text="4516661 · 4516661-4516680 · 4516661, 4516670",
+            corner_radius=theme.RADIUS_INPUT, border_width=1,
+            fg_color=theme.INPUT_BG, border_color=theme.BORDER_INPUT,
+            text_color=theme.TEXT, placeholder_text_color=theme.TEXT_MUTED,
+            font=theme.font(theme.FONT_SIZE_INPUT, mono=True),
+        )
+        self.entry_query.pack(pady=(theme.SPACE_XS, 0))
 
-        ctk.CTkLabel(row, text="NF-e inicial:").pack(side="left", padx=(0, 4))
-        self.entry_start = ctk.CTkEntry(row, width=110, validate="key", validatecommand=digits_only)
-        self.entry_start.pack(side="left", padx=(0, 16))
-
-        ctk.CTkLabel(row, text="NF-e final:").pack(side="left", padx=(0, 4))
-        self.entry_end = ctk.CTkEntry(row, width=110, validate="key", validatecommand=digits_only)
-        self.entry_end.pack(side="left", padx=(0, 12))
-
-        self.btn_search = ctk.CTkButton(row, text="Buscar", width=100, command=self._start_search)
-        self.btn_search.pack(side="left", padx=(0, 6))
+        self.btn_search = ctk.CTkButton(row, text="Buscar", width=100, height=38, command=self._start_search)
+        self.btn_search.pack(side="left", padx=(0, 6), anchor="s")
 
         self.btn_clear = ctk.CTkButton(
-            row, text="Limpar", width=100,
+            row, text="Limpar", width=100, height=38,
             fg_color="transparent", hover_color=theme.SURFACE_2,
             border_width=1, border_color=theme.BORDER_INPUT,
             command=self._clear,
         )
-        self.btn_clear.pack(side="left")
+        self.btn_clear.pack(side="left", anchor="s")
 
         # Shown only when the results have connection failures.
         text_color, bg_color = theme.STATUS[Tone.CONNECTION.value]
@@ -92,8 +104,8 @@ class SearchFrame(ctk.CTkFrame):
             command=self._retry_failures,
         )
 
-        self.entry_start.bind("<Return>", lambda e: self.entry_end.focus())
-        self.entry_end.bind("<Return>",   lambda e: self._start_search())
+        self.entry_query.bind("<Return>", lambda e: self._start_search())
+        self.entry_query.bind("<KeyRelease>", self._on_query_change)
 
     def _build_progress_row(self, main: ctk.CTkFrame) -> None:
         row = ctk.CTkFrame(main, fg_color="transparent")
@@ -113,6 +125,8 @@ class SearchFrame(ctk.CTkFrame):
         self.progressbar.set(0)
 
     def _build_table(self, main: ctk.CTkFrame) -> None:
+        self._confirm = Banner(main, theme.BG)
+        self._confirm.pack(fill="x", pady=(0, 6))
         make_header(main, _COLS).pack(fill="x")
         self.scroll = ctk.CTkScrollableFrame(main)
         self.scroll.pack(fill="both", expand=True, pady=(2, 6))
@@ -217,32 +231,52 @@ class SearchFrame(ctk.CTkFrame):
         self._stop_event.set()
         self._on_logout()
 
+    def _on_query_change(self, _event=None) -> None:
+        text = self.entry_query.get()
+        # KeyRelease also fires for Enter, arrows and Shift: only react when the text really changed,
+        # otherwise releasing the Enter that asked for confirmation would hide it right away.
+        if text == self._last_query:
+            return
+        self._last_query = text
+        parsed = parse_query(text)
+        color = theme.STATUS[Tone.ERROR.value][0] if parsed.label and not parsed.valid else theme.TEXT_MUTED
+        self.lbl_parse.configure(text=parsed.label, text_color=color)
+        self._confirm.hide()  # a pending confirmation was for the old text
+
     def _start_search(self) -> None:
         if self._searching:
             return
-        try:
-            start = int(self.entry_start.get().strip())
-            end   = int(self.entry_end.get().strip())
-        except ValueError:
-            set_message(self.lbl_progress, "Digite números válidos.", Tone.WARNING)
+        query = self.entry_query.get().strip()
+        parsed = parse_query(query)
+        self._on_query_change()
+        if not parsed.valid:
+            self.entry_query.focus()
             return
-        if start > end:
-            set_message(self.lbl_progress, "NF-e inicial deve ser menor ou igual à final.", Tone.WARNING)
+        if len(parsed.invoices) > CONFIRM_ABOVE:
+            self._confirm.show(
+                Tone.INFO, f"Consultar {parsed.label.split(' · ')[-1]}? Pode levar alguns minutos.",
+                [("Consultar", lambda: self._begin_search(query, parsed.invoices)), ("Cancelar", self._confirm.hide)],
+            )
             return
+        self._begin_search(query, parsed.invoices)
 
+    def _begin_search(self, query: str, invoices: list[int]) -> None:
+        if self._searching:  # "Consultar" on the banner while a retry is already running
+            return
         self._clear_table()
         self.option_filter.set("Todos")
         self._reset_chips()
-        self._run(list(range(start, end + 1)), start, end, retry=False)
+        self._run(invoices, query, retry=False)
 
     def _retry_failures(self) -> None:
         if self._searching or self._current_entry is None:
             return
         failures = self._failures()
         if failures:
-            self._run(failures, self._current_entry["start"], self._current_entry["end"], retry=True)
+            self._run(failures, self._current_entry["query"], retry=True)
 
-    def _run(self, invoices: list[int], start: int, end: int, retry: bool) -> None:
+    def _run(self, invoices: list[int], query: str, retry: bool) -> None:
+        self._confirm.hide()
         self._searching = True
         self._stop_event.clear()
         set_message(self.lbl_progress, "")
@@ -253,7 +287,7 @@ class SearchFrame(ctk.CTkFrame):
         self._btn_search_style = show_cancel(self.btn_search, self._cancel)
 
         def finish(**kwargs):
-            return lambda *_: self._finish(start, end, retry=retry, **kwargs)
+            return lambda *_: self._finish(query, retry=retry, **kwargs)
 
         worker = SearchWorker(
             session=self._session,
@@ -310,9 +344,7 @@ class SearchFrame(ctk.CTkFrame):
     # FINALIZAÇÃO
     # ------------------------------------------------------------------
 
-    def _finish(
-        self, start: int, end: int, retry: bool, cancelled: bool = False, session_lost: bool = False,
-    ) -> None:
+    def _finish(self, query: str, retry: bool, cancelled: bool = False, session_lost: bool = False) -> None:
         self._searching = False
         restore_button(self.btn_search, self._btn_search_style)
         self.btn_search.configure(state="normal")
@@ -336,15 +368,16 @@ class SearchFrame(ctk.CTkFrame):
         self._update_retry_button()
         if self._results:
             self.btn_export.configure(state="normal")
-            self._save_history(start, end, update=retry)
+            self._save_history(query, update=retry)
 
     # ------------------------------------------------------------------
     # LIMPAR
     # ------------------------------------------------------------------
 
     def _clear(self) -> None:
-        self.entry_start.delete(0, "end")
-        self.entry_end.delete(0, "end")
+        self.entry_query.delete(0, "end")
+        self._on_query_change()
+        self._confirm.hide()
         self._clear_table()
         set_message(self.lbl_progress, "")
         self.progressbar.set(0)
@@ -352,7 +385,7 @@ class SearchFrame(ctk.CTkFrame):
         self._reset_chips()
         self._update_retry_button()
         self.btn_export.configure(state="disabled")
-        self.entry_start.focus()
+        self.entry_query.focus()
 
     # ------------------------------------------------------------------
     # EXPORTAR EXCEL
@@ -368,32 +401,36 @@ class SearchFrame(ctk.CTkFrame):
     # HISTÓRICO
     # ------------------------------------------------------------------
 
-    def _history_label(self, hour: str, start: int, end: int) -> str:
-        label = f"{hour}  ·  NF-e {start} → {end}  ({len(self._results)} itens)"
+    def _history_label(self, hour: str, query: str) -> str:
+        text = " ".join(query.split())  # a pasted Excel column becomes one line
+        if len(text) > _HISTORY_QUERY_CHARS:
+            text = text[:_HISTORY_QUERY_CHARS - 1] + "…"
+        count = len(self._results)
+        label = f"{hour}  ·  {text}  ({count} {'item' if count == 1 else 'itens'})"
         failures = len(self._failures())
         return f"{label}  ·  {failures} com falha" if failures else label
 
-    def _save_history(self, start: int, end: int, update: bool) -> None:
+    def _save_history(self, query: str, update: bool) -> None:
         """A new search adds an entry; retrying its failures updates that same entry."""
         if update and self._current_entry is not None:
             entry = self._current_entry
             entry["results"] = self._rows()
-            entry["label"] = self._history_label(entry["hour"], start, end)
+            entry["label"] = self._history_label(entry["hour"], entry["query"])
             self._hist.refresh()
             return
         hour = datetime.now().strftime("%H:%M")
-        entry = {"hour": hour, "start": start, "end": end, "results": self._rows()}
-        entry["label"] = self._history_label(hour, start, end)
+        entry = {"hour": hour, "query": query, "results": self._rows()}
+        entry["label"] = self._history_label(hour, query)
         self._current_entry = entry
         self._hist.add(entry)
 
     def _restore(self, entry: dict) -> None:
         if self._searching:
             return
-        self.entry_start.delete(0, "end")
-        self.entry_start.insert(0, str(entry["start"]))
-        self.entry_end.delete(0, "end")
-        self.entry_end.insert(0, str(entry["end"]))
+        self.entry_query.delete(0, "end")
+        self.entry_query.insert(0, entry["query"])
+        self._on_query_change()
+        self._confirm.hide()
 
         self._clear_table()
         self._results = {r["NF-e"]: r for r in entry["results"]}

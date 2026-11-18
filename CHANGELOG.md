@@ -4,6 +4,14 @@ Todas as mudanças relevantes do projeto ficam registradas aqui.
 
 O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/). As versões anteriores à 2.0.0 estão descritas nas [releases do GitHub](https://github.com/The-Souza/consulta-nfe-cte/releases).
 
+## [2.0.0-alpha.2] — em andamento
+
+### Alterado
+- Consulta: um campo único "NF-es" no lugar de "NF-e inicial" e "NF-e final". Aceita uma NF-e (`4516661`), uma faixa (`4516661-4516680`) ou uma lista separada por vírgula, espaço, `;` ou quebra de linha, como uma coluna colada do Excel. Repetidas são consultadas uma vez só.
+- Consulta: acima do campo aparece como o app entendeu o texto ("1 NF-e", "Faixa · 20 NF-es", "Lista · 3 NF-es" ou "Formato não reconhecido"). Enter busca.
+- Consulta: acima de 500 NF-es, o app pede confirmação antes de buscar; o limite é de 5.000 NF-es por consulta.
+- Histórico da consulta: guarda o texto do campo e o devolve ao restaurar.
+
 ## [2.0.0-alpha.1] — 2026-11-18
 
 ### Adicionado
