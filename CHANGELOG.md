@@ -4,7 +4,14 @@ Todas as mudanças relevantes do projeto ficam registradas aqui.
 
 O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/). As versões anteriores à 2.0.0 estão descritas nas [releases do GitHub](https://github.com/The-Souza/consulta-nfe-cte/releases).
 
-## [2.0.0-alpha.0] — em andamento
+## [2.0.0-alpha.1] — em andamento
+
+### Alterado
+- Consulta e upload repetem a chamada sozinhos quando o servidor oscila (tempo esgotado, queda de conexão, servidor sobrecarregado ou sessão devolvendo página em vez de dados): até 3 novas tentativas, com espera crescente.
+- O que continuar falhando aparece como "Falha de conexão", com cor própria, diferente de "Não cadastrada". O Excel também mostra esse status.
+- O envio da imagem só é repetido quando a conexão nem chegou a ser feita, porque o portal não aceita uma segunda imagem para o mesmo canhoto.
+
+## [2.0.0-alpha.0] — 2026-11-18
 
 ### Adicionado
 - Versão do app definida em `config.py` (`APP_VERSION`).
