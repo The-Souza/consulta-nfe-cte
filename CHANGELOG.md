@@ -12,7 +12,8 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 - CI no GitHub Actions: lint e testes em todo push e PR para `develop` e `master`.
 - Tema escuro com cores, fontes e espaçamentos centralizados (`ui/theme.py`).
 - Ícones Lucide no lugar de símbolos de texto, incluídos no executável.
-- Login: opção "Lembrar acesso neste computador" (desmarcada, o app não guarda e apaga o acesso salvo), botão para mostrar/ocultar a senha e a versão do app abaixo do card.
+- Login: opção "Lembrar senha neste computador". O e-mail é sempre lembrado; desmarcada, o app apaga a senha salva. A opção abre como foi deixada no último login.
+- Login: botão para mostrar/ocultar a senha e a versão do app abaixo do card.
 - Login: usa o arquivo de ícone do `.env` (`ICON_FILE`) como logo; sem ele, mostra um ícone padrão.
 
 ### Alterado
