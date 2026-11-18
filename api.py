@@ -8,7 +8,7 @@ import requests
 import urllib3
 
 from config import LOGIN_URL, CANHOTOS_URL, QUERY_HEADERS
-from utils.status import SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
+from utils.status import CONNECTION_FAILED, SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
 
 UPLOAD_TIMEOUT = (5, 45)
 
@@ -83,6 +83,10 @@ def _get_json(
 
 
 def friendly_error(e: Exception) -> str:
+    if isinstance(e, ConnectionFailed):
+        return CONNECTION_FAILED
+    if isinstance(e, SessionExpired):
+        return "Sessão expirada"
     if isinstance(e, requests.exceptions.ConnectionError):
         return "Sem conexão com o servidor"
     if isinstance(e, requests.exceptions.Timeout):

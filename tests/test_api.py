@@ -8,7 +8,7 @@ import responses
 import urllib3
 
 import api
-from utils.status import SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
+from utils.status import CONNECTION_FAILED, SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
 
 URL = "https://api.test/canhotos"
 
@@ -356,6 +356,22 @@ def test_upload_session_expired(session, waits, api_urls, image):
 
     with pytest.raises(api.SessionExpired):
         _upload(session, image)
+
+
+# friendly_error -------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (api.ConnectionFailed("HTTP 502"), CONNECTION_FAILED),
+        (api.SessionExpired("HTTP 401"), "Sessão expirada"),
+        (requests.exceptions.ConnectionError(), "Sem conexão com o servidor"),
+        (requests.exceptions.Timeout(), "Tempo de resposta esgotado"),
+        (ValueError("x" * 100), "x" * 80),
+    ],
+)
+def test_friendly_error(error, expected):
+    assert api.friendly_error(error) == expected
 
 
 # _wait --------------------------------------------------------------------------
