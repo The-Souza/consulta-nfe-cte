@@ -51,6 +51,8 @@ class NavCard(ctk.CTkFrame):
             self._bind_tree(child)
 
     def _on_click(self, _event=None) -> None:
+        # The screen changes under the pointer and Tk may never send <Leave>.
+        self.configure(fg_color=theme.SURFACE)
         self._command()
 
     def _on_enter(self, _event=None) -> None:
