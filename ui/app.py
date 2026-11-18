@@ -8,6 +8,7 @@ from ui.frames.home import HomeFrame
 from ui.frames.search import SearchFrame
 from ui.frames.upload import UploadFrame
 from ui.titlebar import apply_titlebar
+from ui.window_size import fit_window, work_area
 
 
 class App(ctk.CTk):
@@ -64,9 +65,7 @@ class App(ctk.CTk):
     def _show_search(self) -> None:
         if self._home_frame:
             self._home_frame.pack_forget()
-        self.geometry("1180x760")
-        self.resizable(True, True)
-        self.minsize(1000, 640)
+        self._large_window(1180, 760, 1000, 640)
         self._search_frame = SearchFrame(
             self, self.session, self._user_name,
             on_logout=self._back_to_login,
@@ -78,9 +77,7 @@ class App(ctk.CTk):
     def _show_upload(self) -> None:
         if self._home_frame:
             self._home_frame.pack_forget()
-        self.geometry("920x720")
-        self.resizable(True, True)
-        self.minsize(700, 560)
+        self._large_window(920, 720, 700, 560)
         self._upload_frame = UploadFrame(
             self, self.session, self._user_name,
             on_logout=self._back_to_login,
@@ -114,6 +111,16 @@ class App(ctk.CTk):
         self._login_frame.reset()
         self._login_frame.pack(fill="both", expand=True)
         self._compact_window()
+
+    def _large_window(self, width: int, height: int, min_width: int, min_height: int) -> None:
+        """Search/Upload size, reduced to fit small or zoomed screens (e.g. 1366×768 laptops)."""
+        fit = fit_window(
+            width=width, height=height, min_width=min_width, min_height=min_height,
+            area=work_area(self), scaling=ctk.ScalingTracker.get_window_scaling(self),
+        )
+        self.resizable(True, True)
+        self.minsize(fit.min_width, fit.min_height)
+        self.geometry(f"{fit.width}x{fit.height}+{fit.x}+{fit.y}")
 
     def _compact_window(self) -> None:
         """Login/Home size. The minimum set by Search/Upload must go too, or Tk keeps the window wide."""
