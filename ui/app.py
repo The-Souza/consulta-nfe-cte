@@ -64,9 +64,9 @@ class App(ctk.CTk):
     def _show_search(self) -> None:
         if self._home_frame:
             self._home_frame.pack_forget()
-        self.geometry("920x680")
+        self.geometry("1180x760")
         self.resizable(True, True)
-        self.minsize(700, 520)
+        self.minsize(1000, 640)
         self._search_frame = SearchFrame(
             self, self.session, self._user_name,
             on_logout=self._back_to_login,
@@ -95,8 +95,7 @@ class App(ctk.CTk):
                 frame.destroy()
         self._search_frame = None
         self._upload_frame = None
-        self.geometry("520x500")
-        self.resizable(False, False)
+        self._compact_window()
         if self._home_frame:
             self._home_frame.pack(fill="both", expand=True)
 
@@ -114,5 +113,10 @@ class App(ctk.CTk):
 
         self._login_frame.reset()
         self._login_frame.pack(fill="both", expand=True)
+        self._compact_window()
+
+    def _compact_window(self) -> None:
+        """Login/Home size. The minimum set by Search/Upload must go too, or Tk keeps the window wide."""
+        self.minsize(1, 1)
         self.geometry("520x500")
         self.resizable(False, False)
