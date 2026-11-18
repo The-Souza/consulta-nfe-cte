@@ -5,13 +5,16 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 
+from ui import theme
+from ui.widgets.buttons import restore_button, show_cancel
 from ui.widgets.chip import make_chip
 from ui.widgets.history import HistoryPanel
-from ui.widgets.progress import make_progress
+from ui.widgets.progress import make_progress, set_message
 from ui.widgets.table import make_header, insert_row, clear_scroll
 from ui.widgets.topbar import make_topbar
 from ui.workers.rename import RenameWorker
 from ui.workers.upload import UploadWorker
+from utils.status import Tone, rename_status
 
 _COLS_R = [("Nº", 50), ("Arquivo original", 280), ("NF-e detectada", 140), ("Status", 150)]
 _COLS_U = [("Nº", 50), ("NF-e", 120), ("Status", 180)]
@@ -29,6 +32,7 @@ class UploadFrame(ctk.CTkFrame):
         self._cnt_ok = self._cnt_dup = self._cnt_error = 0
         self._rows: list    = []
         self._output_folder = ""
+        self._btn_style: dict = {}
         self._build(user_name)
 
     # ------------------------------------------------------------------
@@ -55,19 +59,17 @@ class UploadFrame(ctk.CTkFrame):
         self.entry_input_folder.pack(side="left", padx=(0, 4))
         ctk.CTkButton(
             row, text="...", width=34,
-            fg_color="transparent", border_width=1, border_color="gray",
+            fg_color="transparent", hover_color=theme.SURFACE_2, border_width=1, border_color=theme.BORDER_INPUT,
             command=self._select_input_folder,
         ).pack(side="left", padx=(0, 8))
 
         self.btn_rename = ctk.CTkButton(row, text="Renomear", width=120, command=self._start_rename)
         self.btn_rename.pack(side="left", padx=(0, 6))
-        self._btn_rename_fg    = self.btn_rename.cget("fg_color")
-        self._btn_rename_hover = self.btn_rename.cget("hover_color")
 
         ctk.CTkButton(
             row, text="Limpar", width=80,
-            fg_color="transparent", hover_color="#444",
-            border_width=1, border_color="gray",
+            fg_color="transparent", hover_color=theme.SURFACE_2,
+            border_width=1, border_color=theme.BORDER_INPUT,
             command=self._clear_rename,
         ).pack(side="left")
 
@@ -90,9 +92,9 @@ class UploadFrame(ctk.CTkFrame):
 
         stat = ctk.CTkFrame(bar, fg_color="transparent")
         stat.pack(side="left")
-        self.chip_ok    = make_chip(stat, "#4CAF50", "#1a3a1a")
-        self.chip_dup   = make_chip(stat, "#FFC107", "#3a3000")
-        self.chip_error = make_chip(stat, "#F44336", "#3a0f0f")
+        self.chip_ok    = make_chip(stat, Tone.OK)
+        self.chip_dup   = make_chip(stat, Tone.WARNING)
+        self.chip_error = make_chip(stat, Tone.ERROR)
         self._reset_rename_chips()
 
         self._frame_upload_bar = ctk.CTkFrame(bar, fg_color="transparent")
@@ -109,8 +111,6 @@ class UploadFrame(ctk.CTkFrame):
             command=self._start_upload,
         )
         self.btn_upload.pack(side="left")
-        self._btn_upload_fg    = self.btn_upload.cget("fg_color")
-        self._btn_upload_hover = self.btn_upload.cget("hover_color")
         self._frame_upload_bar.pack(side="right")
 
     def _build_history(self, main: ctk.CTkFrame) -> None:
@@ -122,15 +122,21 @@ class UploadFrame(ctk.CTkFrame):
 
     def _reset_rename_chips(self) -> None:
         self._cnt_ok = self._cnt_dup = self._cnt_error = 0
-        self.chip_ok.configure(text="✅  0  Renomeadas")
-        self.chip_dup.configure(text="⚠  0  Duplicatas")
-        self.chip_error.configure(text="❌  0  Não lidas")
+        self._update_rename_chips()
 
     def _reset_upload_chips(self) -> None:
         self._cnt_ok = self._cnt_dup = self._cnt_error = 0
-        self.chip_ok.configure(text="✅  0  Enviados")
-        self.chip_dup.configure(text="⚠  0  Ignorados")
-        self.chip_error.configure(text="❌  0  Erros")
+        self._update_upload_chips()
+
+    def _update_rename_chips(self) -> None:
+        self.chip_ok.configure(text=f"{self._cnt_ok}  Renomeadas")
+        self.chip_dup.configure(text=f"{self._cnt_dup}  Duplicatas")
+        self.chip_error.configure(text=f"{self._cnt_error}  Não lidas")
+
+    def _update_upload_chips(self) -> None:
+        self.chip_ok.configure(text=f"{self._cnt_ok}  Enviados")
+        self.chip_dup.configure(text=f"{self._cnt_dup}  Ignorados")
+        self.chip_error.configure(text=f"{self._cnt_error}  Erros")
 
     def _on_data_keyrelease(self, event=None) -> None:
         if event and event.keysym == "BackSpace":
@@ -160,7 +166,7 @@ class UploadFrame(ctk.CTkFrame):
         self.hdr_upload.pack_forget()
         self.hdr_rename.pack(fill="x")
         self._clear_table()
-        self.lbl_progress.configure(text="")
+        set_message(self.lbl_progress, "")
         self.progressbar.set(0)
         self._reset_rename_chips()
 
@@ -170,15 +176,9 @@ class UploadFrame(ctk.CTkFrame):
 
     def _insert_rename_row(self, filename: str, invoice_num: str | None, status: str) -> None:
         self._row_count += 1
-        _COR = {
-            "ok":             ("✅ Renomeada", "#4CAF50", "#1a3a1a"),
-            "duplicata":      ("⚠ Duplicata",  "#FFC107", "#3a3000"),
-            "nao_encontrada": ("❌ Não lida",  "#F44336", "#3a0f0f"),
-            "erro":           ("❌ Erro",       "#F44336", "#3a0f0f"),
-        }
-        label, text_color, bg_color = _COR.get(status, ("❌ Erro", "#F44336", "#3a0f0f"))
+        label, tone = rename_status(status)
         insert_row(self.scroll, self._row_count, _COLS_R,
-                   [str(self._row_count), filename, invoice_num or "-"], label, text_color, bg_color)
+                   [str(self._row_count), filename, invoice_num or "-"], label, tone)
         self._rows.append((filename, invoice_num, status))
         if status == "ok":
             self._cnt_ok += 1
@@ -186,26 +186,19 @@ class UploadFrame(ctk.CTkFrame):
             self._cnt_dup += 1
         else:
             self._cnt_error += 1
-        self.chip_ok.configure(text=f"✅  {self._cnt_ok}  Renomeadas")
-        self.chip_dup.configure(text=f"⚠  {self._cnt_dup}  Duplicatas")
-        self.chip_error.configure(text=f"❌  {self._cnt_error}  Não lidas")
+        self._update_rename_chips()
 
-    def _insert_upload_row(self, invoice_num: str, status: str) -> None:
+    def _insert_upload_row(self, invoice_num: str, tone: Tone, text: str) -> None:
         self._row_count += 1
-        _COR = {"✅": ("#4CAF50", "#1a3a1a"), "⚠": ("#FFC107", "#3a3000"), "❌": ("#F44336", "#3a0f0f")}
-        text_color, bg_color = next(((f, b) for k, (f, b) in _COR.items() if k in status), ("#aaa", "transparent"))
-        insert_row(self.scroll, self._row_count, _COLS_U,
-                   [str(self._row_count), invoice_num], status, text_color, bg_color)
-        self._rows.append((invoice_num, status))
-        if "✅" in status:
+        insert_row(self.scroll, self._row_count, _COLS_U, [str(self._row_count), invoice_num], text, tone)
+        self._rows.append((invoice_num, tone, text))
+        if tone is Tone.OK:
             self._cnt_ok += 1
-        elif "⚠" in status:
+        elif tone is Tone.WARNING:
             self._cnt_dup += 1
         else:
             self._cnt_error += 1
-        self.chip_ok.configure(text=f"✅  {self._cnt_ok}  Enviados")
-        self.chip_dup.configure(text=f"⚠  {self._cnt_dup}  Ignorados")
-        self.chip_error.configure(text=f"❌  {self._cnt_error}  Erros")
+        self._update_upload_chips()
 
     # ------------------------------------------------------------------
     # SELETORES DE PASTA
@@ -226,7 +219,7 @@ class UploadFrame(ctk.CTkFrame):
             return
         folder = self.entry_input_folder.get().strip() or "images"
         if not os.path.isdir(folder):
-            self.lbl_progress.configure(text=f"⚠ Pasta não encontrada: {folder}")
+            set_message(self.lbl_progress, f"Pasta não encontrada: {folder}", Tone.WARNING)
             return
 
         self._step = "rename"
@@ -235,14 +228,11 @@ class UploadFrame(ctk.CTkFrame):
         self.hdr_rename.pack(fill="x")
         self._clear_table()
         self._reset_rename_chips()
+        set_message(self.lbl_progress, "")
         self.progressbar.set(0)
         self._running = True
         self._stop_event.clear()
-        self.btn_rename.configure(
-            text="⏹ Cancelar",
-            fg_color=("#c0392b", "#7b241c"), hover_color=("#a93226", "#641e16"),
-            command=self._cancel,
-        )
+        self._btn_style = show_cancel(self.btn_rename, self._cancel)
         worker = RenameWorker(
             folder=folder,
             stop_event=self._stop_event,
@@ -256,26 +246,23 @@ class UploadFrame(ctk.CTkFrame):
     def _update_rename(self, filename: str, invoice_num: str | None, status: str, prog: float, current: int, total: int, elapsed: float) -> None:
         self.progressbar.set(prog)
         m, s = divmod(int(elapsed), 60)
-        self.lbl_progress.configure(text=f"{filename}  ({current}/{total})  {m:02d}:{s:02d}")
+        set_message(self.lbl_progress, f"{filename}  ({current}/{total})  {m:02d}:{s:02d}")
         self._insert_rename_row(filename, invoice_num, status)
 
     def _finish_rename(self, cancelled: bool, output: str = "") -> None:
         self._running = False
-        self.btn_rename.configure(
-            text="Renomear",
-            fg_color=self._btn_rename_fg, hover_color=self._btn_rename_hover,
-            command=self._start_rename,
-        )
+        restore_button(self.btn_rename, self._btn_style)
         if cancelled:
-            self.lbl_progress.configure(text="Renomeação cancelada.")
+            set_message(self.lbl_progress, "Renomeação cancelada.")
             return
 
         self.progressbar.set(1)
-        self.lbl_progress.configure(text="Renomeação concluída.")
+        set_message(self.lbl_progress, "Renomeação concluída.")
         self._output_folder = output
         self._add_history(
             entry_type="rename",
-            label=f"✅ {self._cnt_ok}  ·  ⚠ {self._cnt_dup}  ·  ❌ {self._cnt_error}  —  {output}",
+            label=(f"{self._cnt_ok} renomeadas  ·  {self._cnt_dup} duplicatas  ·  "
+                   f"{self._cnt_error} não lidas  —  {output}"),
             folder=output,
             date_str="",
             rows=list(self._rows),
@@ -300,7 +287,7 @@ class UploadFrame(ctk.CTkFrame):
             else:
                 folder = "renomeadas"
         if not os.path.isdir(folder):
-            self.lbl_progress.configure(text=f"⚠ Pasta não encontrada: {folder}")
+            set_message(self.lbl_progress, f"Pasta não encontrada: {folder}", Tone.WARNING)
             return
 
         date_str = self.entry_date.get().strip()
@@ -308,7 +295,7 @@ class UploadFrame(ctk.CTkFrame):
             dt = datetime.strptime(date_str, "%d/%m/%Y")
             batch_date = dt.strftime("%Y-%m-%dT12:00:00.000Z")
         except ValueError:
-            self.lbl_progress.configure(text="⚠ Data inválida. Use DD/MM/AAAA.")
+            set_message(self.lbl_progress, "Data inválida. Use DD/MM/AAAA.", Tone.WARNING)
             return
 
         self._step = "upload"
@@ -317,14 +304,11 @@ class UploadFrame(ctk.CTkFrame):
         self.hdr_upload.pack(fill="x")
         self._clear_table()
         self._reset_upload_chips()
+        set_message(self.lbl_progress, "")
         self.progressbar.set(0)
         self._running = True
         self._stop_event.clear()
-        self.btn_upload.configure(
-            text="⏹ Cancelar",
-            fg_color=("#c0392b", "#7b241c"), hover_color=("#a93226", "#641e16"),
-            command=self._cancel,
-        )
+        self._btn_style = show_cancel(self.btn_upload, self._cancel)
         worker = UploadWorker(
             session=self._session,
             folder=folder,
@@ -337,27 +321,26 @@ class UploadFrame(ctk.CTkFrame):
         )
         threading.Thread(target=worker.run, daemon=True).start()
 
-    def _update_upload(self, invoice_num: str, status: str, prog: float, current: int, total: int, elapsed: float) -> None:
+    def _update_upload(
+        self, invoice_num: str, tone: Tone, text: str, prog: float, current: int, total: int, elapsed: float,
+    ) -> None:
         self.progressbar.set(prog)
         m, s = divmod(int(elapsed), 60)
-        self.lbl_progress.configure(text=f"NF-e {invoice_num}  ({current}/{total})  {m:02d}:{s:02d}")
-        self._insert_upload_row(invoice_num, status)
+        set_message(self.lbl_progress, f"NF-e {invoice_num}  ({current}/{total})  {m:02d}:{s:02d}")
+        self._insert_upload_row(invoice_num, tone, text)
 
     def _finish_upload(self, cancelled: bool, folder: str = "", date_str: str = "") -> None:
         self._running = False
-        self.btn_upload.configure(
-            text="Iniciar Upload",
-            fg_color=self._btn_upload_fg, hover_color=self._btn_upload_hover,
-            command=self._start_upload,
-        )
+        restore_button(self.btn_upload, self._btn_style)
         if cancelled:
-            self.lbl_progress.configure(text="Upload cancelado.")
+            set_message(self.lbl_progress, "Upload cancelado.")
         else:
             self.progressbar.set(1)
-            self.lbl_progress.configure(text="Upload concluído.")
+            set_message(self.lbl_progress, "Upload concluído.")
             self._add_history(
                 entry_type="upload",
-                label=f"✅ {self._cnt_ok}  ·  ⚠ {self._cnt_dup}  ·  ❌ {self._cnt_error}  —  {folder}  ·  {date_str}",
+                label=(f"{self._cnt_ok} enviados  ·  {self._cnt_dup} ignorados  ·  "
+                       f"{self._cnt_error} erros  —  {folder}  ·  {date_str}"),
                 folder=folder,
                 date_str=date_str,
                 rows=list(self._rows),
@@ -390,13 +373,13 @@ class UploadFrame(ctk.CTkFrame):
             self._reset_upload_chips()
             self.hdr_rename.pack_forget()
             self.hdr_upload.pack(fill="x")
-            for invoice_num, status in entry["rows"]:
-                self._insert_upload_row(invoice_num, status)
+            for invoice_num, tone, text in entry["rows"]:
+                self._insert_upload_row(invoice_num, tone, text)
             self._output_folder = entry["folder"]
             self.entry_date.delete(0, "end")
             self.entry_date.insert(0, entry["date_str"])
         self.scroll._parent_canvas.yview_moveto(0)
-        self.lbl_progress.configure(text=f"Histórico: {entry['label']}")
+        set_message(self.lbl_progress, f"Histórico: {entry['label']}")
         self.progressbar.set(1)
 
     # ------------------------------------------------------------------

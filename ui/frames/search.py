@@ -4,13 +4,17 @@ from typing import Callable
 
 import customtkinter as ctk
 
+from ui import theme
+from ui.widgets.buttons import restore_button, show_cancel
 from ui.widgets.chip import make_chip
 from ui.widgets.dropdown import FilterDropdown
 from ui.widgets.history import HistoryPanel
+from ui.widgets.progress import set_message
 from ui.widgets.table import make_header, insert_row, clear_scroll
 from ui.widgets.topbar import make_topbar
 from ui.workers.search import SearchWorker
 from utils.excel import export_excel, format_image
+from utils.status import SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK, Tone, search_tone
 
 _COLS = [("Nº", 50), ("NF-e", 80), ("CT-e", 100), ("Imagem", 80), ("Status", 160)]
 
@@ -18,9 +22,9 @@ _FILTERS: dict[str, Callable[[dict], bool]] = {
     "Todos":          lambda r: True,
     "Sem imagem":     lambda r: r.get("Imagem") == "Não",
     "Com imagem":     lambda r: r.get("Imagem") == "Sim",
-    "Sem CT-e":       lambda r: "Sem CT-e" in r["Status"],
-    "Não cadastrada": lambda r: "Não cadastrada" in r["Status"],
-    "Com CT-e (OK)":  lambda r: "OK" in r["Status"],
+    "Sem CT-e":       lambda r: r["Status"] == SEARCH_NO_CTE,
+    "Não cadastrada": lambda r: r["Status"] == SEARCH_NOT_FOUND,
+    "Com CT-e (OK)":  lambda r: r["Status"] == SEARCH_OK,
 }
 
 
@@ -34,6 +38,7 @@ class SearchFrame(ctk.CTkFrame):
         self._searching  = False
         self._stop_event = threading.Event()
         self._row_count    = 0
+        self._btn_search_style: dict = {}
         self._build(user_name)
 
     # ------------------------------------------------------------------
@@ -67,13 +72,11 @@ class SearchFrame(ctk.CTkFrame):
 
         self.btn_search = ctk.CTkButton(row, text="Buscar", width=100, command=self._start_search)
         self.btn_search.pack(side="left", padx=(0, 6))
-        self._btn_search_fg    = self.btn_search.cget("fg_color")
-        self._btn_search_hover = self.btn_search.cget("hover_color")
 
         self.btn_clear = ctk.CTkButton(
             row, text="Limpar", width=100,
-            fg_color="transparent", hover_color="#444",
-            border_width=1, border_color="gray",
+            fg_color="transparent", hover_color=theme.SURFACE_2,
+            border_width=1, border_color=theme.BORDER_INPUT,
             command=self._clear,
         )
         self.btn_clear.pack(side="left")
@@ -85,7 +88,7 @@ class SearchFrame(ctk.CTkFrame):
         row = ctk.CTkFrame(main, fg_color="transparent")
         row.pack(fill="x", pady=(4, 8))
 
-        self.lbl_progress = ctk.CTkLabel(row, text="", anchor="w")
+        self.lbl_progress = ctk.CTkLabel(row, text="", anchor="w", text_color=theme.TEXT)
         self.lbl_progress.pack(side="left", fill="x", expand=True)
 
         ctk.CTkLabel(row, text="Filtrar:").pack(side="left", padx=(8, 4))
@@ -110,11 +113,11 @@ class SearchFrame(ctk.CTkFrame):
         stat = ctk.CTkFrame(bar, fg_color="transparent")
         stat.pack(side="left")
 
-        self.chip_ok      = make_chip(stat, "#4CAF50", "#1a3a1a")
-        self.chip_no_cte  = make_chip(stat, "#FFC107", "#3a3000")
-        self.chip_not_found = make_chip(stat, "#F44336", "#3a0f0f")
-        self.chip_img_yes = make_chip(stat, "#4FC3F7", "#0d2b3a")
-        self.chip_img_no  = make_chip(stat, "#BDBDBD", "#333333")
+        self.chip_ok      = make_chip(stat, Tone.OK)
+        self.chip_no_cte  = make_chip(stat, Tone.WARNING)
+        self.chip_not_found = make_chip(stat, Tone.ERROR)
+        self.chip_img_yes = make_chip(stat, Tone.INFO)
+        self.chip_img_no  = make_chip(stat, Tone.NEUTRAL)
         self._reset_chips()
 
         self.btn_export = ctk.CTkButton(
@@ -131,37 +134,27 @@ class SearchFrame(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def _reset_chips(self) -> None:
-        self.chip_ok.configure(text="✅  0  Com CT-e")
-        self.chip_no_cte.configure(text="⚠  0  Sem CT-e")
-        self.chip_not_found.configure(text="❌  0  Não cadastrada")
-        self.chip_img_yes.configure(text="☑  0  Com imagem")
-        self.chip_img_no.configure(text="❌  0  Sem imagem")
+        self._set_chips(0, 0, 0, 0, 0)
 
     def _update_chips(self) -> None:
-        ok      = sum(1 for r in self._results if "OK"             in r["Status"])
-        no_cte     = sum(1 for r in self._results if "Sem CT-e"       in r["Status"])
-        not_found     = sum(1 for r in self._results if "Não cadastrada" in r["Status"])
-        img_yes = sum(1 for r in self._results if r.get("Imagem") == "Sim")
-        img_no  = sum(1 for r in self._results if r.get("Imagem") == "Não")
-        self.chip_ok.configure(text=f"✅  {ok}  Com CT-e")
-        self.chip_no_cte.configure(text=f"⚠  {no_cte}  Sem CT-e")
-        self.chip_not_found.configure(text=f"❌  {not_found}  Não cadastrada")
-        self.chip_img_yes.configure(text=f"☑  {img_yes}  Com imagem")
-        self.chip_img_no.configure(text=f"❌  {img_no}  Sem imagem")
+        statuses = [r["Status"] for r in self._results]
+        images   = [r.get("Imagem") for r in self._results]
+        self._set_chips(
+            statuses.count(SEARCH_OK), statuses.count(SEARCH_NO_CTE), statuses.count(SEARCH_NOT_FOUND),
+            images.count("Sim"), images.count("Não"),
+        )
+
+    def _set_chips(self, ok: int, no_cte: int, not_found: int, img_yes: int, img_no: int) -> None:
+        self.chip_ok.configure(text=f"{ok}  Com CT-e")
+        self.chip_no_cte.configure(text=f"{no_cte}  Sem CT-e")
+        self.chip_not_found.configure(text=f"{not_found}  Não cadastrada")
+        self.chip_img_yes.configure(text=f"{img_yes}  Com imagem")
+        self.chip_img_no.configure(text=f"{img_no}  Sem imagem")
 
     def _insert_row(self, parent, r: dict) -> None:
         self._row_count += 1
-        _COR = {
-            "✅": ("#4CAF50", "#1a3a1a"),
-            "⚠":  ("#FFC107", "#3a3000"),
-            "❌": ("#F44336", "#3a0f0f"),
-        }
-        text_color, bg_color = next(
-            ((f, b) for k, (f, b) in _COR.items() if k in r["Status"]),
-            (None, None),
-        )
         texts = [str(self._row_count), str(r["NF-e"]), r["CT-e"], format_image(r.get("Imagem"))]
-        insert_row(parent, self._row_count, _COLS, texts, r["Status"], text_color, bg_color)
+        insert_row(parent, self._row_count, _COLS, texts, r["Status"], search_tone(r["Status"]))
 
     def _clear_table(self) -> None:
         clear_scroll(self.scroll)
@@ -187,10 +180,10 @@ class SearchFrame(ctk.CTkFrame):
             start = int(self.entry_start.get().strip())
             end   = int(self.entry_end.get().strip())
         except ValueError:
-            self.lbl_progress.configure(text="⚠ Digite números válidos.")
+            set_message(self.lbl_progress, "Digite números válidos.", Tone.WARNING)
             return
         if start > end:
-            self.lbl_progress.configure(text="⚠ NF-e inicial deve ser menor ou igual à final.")
+            set_message(self.lbl_progress, "NF-e inicial deve ser menor ou igual à final.", Tone.WARNING)
             return
 
         self._clear_table()
@@ -198,15 +191,11 @@ class SearchFrame(ctk.CTkFrame):
         self._stop_event.clear()
         self.option_filter.set("Todos")
         self._reset_chips()
+        set_message(self.lbl_progress, "")
         self.progressbar.set(0)
         self.btn_clear.configure(state="disabled")
         self.btn_export.configure(state="disabled")
-        self.btn_search.configure(
-            text="⏹ Cancelar",
-            fg_color=("#c0392b", "#7b241c"),
-            hover_color=("#a93226", "#641e16"),
-            command=self._cancel,
-        )
+        self._btn_search_style = show_cancel(self.btn_search, self._cancel)
 
         worker = SearchWorker(
             session=self._session,
@@ -246,7 +235,7 @@ class SearchFrame(ctk.CTkFrame):
         self._results.append(r)
         self.progressbar.set(prog)
         m, s = divmod(int(elapsed), 60)
-        self.lbl_progress.configure(text=f"NF-e {r['NF-e']}  ({current}/{total})  {m:02d}:{s:02d}")
+        set_message(self.lbl_progress, f"NF-e {r['NF-e']}  ({current}/{total})  {m:02d}:{s:02d}")
         if _FILTERS[self.option_filter.get()](r):
             self._insert_row(self.scroll, r)
         self._update_chips()
@@ -257,20 +246,15 @@ class SearchFrame(ctk.CTkFrame):
 
     def _finish(self, start: int, end: int, cancelled: bool) -> None:
         self._searching = False
-        self.btn_search.configure(
-            text="Buscar",
-            fg_color=self._btn_search_fg,
-            hover_color=self._btn_search_hover,
-            command=self._start_search,
-            state="normal",
-        )
+        restore_button(self.btn_search, self._btn_search_style)
+        self.btn_search.configure(state="normal")
         self.btn_clear.configure(state="normal")
 
         if cancelled:
-            self.lbl_progress.configure(text="Busca cancelada.")
+            set_message(self.lbl_progress, "Busca cancelada.")
         else:
             self.progressbar.set(1)
-            self.lbl_progress.configure(text="Consulta concluída.")
+            set_message(self.lbl_progress, "Consulta concluída.")
             self._update_chips()
 
         if self._results:
@@ -285,7 +269,7 @@ class SearchFrame(ctk.CTkFrame):
         self.entry_start.delete(0, "end")
         self.entry_end.delete(0, "end")
         self._clear_table()
-        self.lbl_progress.configure(text="")
+        set_message(self.lbl_progress, "")
         self.progressbar.set(0)
         self.option_filter.set("Todos")
         self._reset_chips()
@@ -300,7 +284,7 @@ class SearchFrame(ctk.CTkFrame):
         if not self._results:
             return
         filename = export_excel(self._results)
-        self.lbl_progress.configure(text=f"✅ Salvo: {filename}")
+        set_message(self.lbl_progress, f"Salvo: {filename}", Tone.OK)
 
     # ------------------------------------------------------------------
     # HISTÓRICO
@@ -326,6 +310,6 @@ class SearchFrame(ctk.CTkFrame):
         self.scroll._parent_canvas.yview_moveto(0)
 
         self._update_chips()
-        self.lbl_progress.configure(text=f"Histórico: {entry['label']}")
+        set_message(self.lbl_progress, f"Histórico: {entry['label']}")
         self.progressbar.set(1)
         self.btn_export.configure(state="normal")

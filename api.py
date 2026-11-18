@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import requests
 
 from config import LOGIN_URL, CANHOTOS_URL, QUERY_HEADERS
+from utils.status import SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
 
 # The first request after opening the app is often much slower than the
 # server's usual response time (cold connection), so query timeouts are
@@ -55,11 +56,11 @@ def get_invoice(session: requests.Session, invoice_num: int) -> tuple[str, str, 
             cte = item.get("numeroCte")
             has_image = item.get("possuiImagem", "-")
             if cte:
-                return str(cte), "✅ OK", has_image
-            return "-", "⚠ Sem CT-e", has_image
+                return str(cte), SEARCH_OK, has_image
+            return "-", SEARCH_NO_CTE, has_image
         if attempt == 0:
             time.sleep(0.5)
-    return "-", "❌ Não cadastrada", "-"
+    return "-", SEARCH_NOT_FOUND, "-"
 
 
 def get_invoice_for_upload(session: requests.Session, invoice_num: str) -> tuple[str | None, str]:
@@ -80,7 +81,7 @@ def get_invoice_for_upload(session: requests.Session, invoice_num: str) -> tuple
     )
     data = resp.json()
     if not data.get("data"):
-        return None, "❌ Não encontrada"
+        return None, "Não encontrada"
     item = data["data"][0]
     return item.get("oid"), item.get("status", "")
 

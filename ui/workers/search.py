@@ -38,7 +38,7 @@ class SearchWorker:
             try:
                 cte, status, has_image = api.get_invoice(self._session, invoice_num)
             except Exception as e:
-                cte, status, has_image = "-", f"❌ {api.friendly_error(e)}", "-"
+                cte, status, has_image = "-", api.friendly_error(e), "-"
 
             r = {"NF-e": invoice_num, "CT-e": cte, "Imagem": has_image, "Status": status}
             prog    = (i + 1) / total

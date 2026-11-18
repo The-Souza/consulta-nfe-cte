@@ -21,3 +21,9 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 - O release só gera o executável se o lint e os testes passarem e se a versão do app for igual à da tag.
 - Novo visual do Login e do Início: no Início, os dois botões viraram cards com ícone, título e descrição.
 - Barra de título escura no Windows 11 e nova barra superior, com ícones nos botões "Voltar" e "Sair".
+- Consulta e Upload sem emojis: os status aparecem como badges coloridos na tabela e nos contadores, e os avisos ficam em amarelo.
+- Botão "Cancelar" com ícone e cor de erro; o filtro, o histórico e a tabela seguem o tema escuro.
+- O Excel exportado traz o status sem emoji (`OK`, `Sem CT-e`, `Não cadastrada`).
+
+### Corrigido
+- Consulta: uma mensagem de erro com "OK" no texto era contada e filtrada como "Com CT-e".

@@ -2,6 +2,9 @@ from typing import Callable
 
 import customtkinter as ctk
 
+from ui import theme
+from ui.icons import get_icon
+
 
 class HistoryPanel:
     def __init__(self, parent, on_restore: Callable[[dict], None]):
@@ -10,13 +13,16 @@ class HistoryPanel:
         self._on_restore = on_restore
 
         self._btn_toggle = ctk.CTkButton(
-            parent, text="▶  Histórico (0)",
-            fg_color="transparent", hover_color="#444",
-            anchor="w", height=28,
+            parent, text="Histórico (0)", image=get_icon("chevron-right", 16, theme.TEXT_MUTED), compound="left",
+            fg_color=theme.TRANSPARENT, hover_color=theme.SURFACE_2, text_color=theme.TEXT_LABEL,
+            font=theme.font(theme.FONT_SIZE_BODY), anchor="w", height=28, corner_radius=theme.RADIUS_INPUT,
             command=self._toggle,
         )
         self._btn_toggle.pack(fill="x", pady=(10, 0))
-        self._scroll = ctk.CTkScrollableFrame(parent, height=88)
+        self._scroll = ctk.CTkScrollableFrame(
+            parent, height=88, fg_color=theme.SURFACE, corner_radius=theme.RADIUS_INPUT,
+            scrollbar_button_color=theme.SCROLLBAR_BUTTON, scrollbar_button_hover_color=theme.SCROLLBAR_BUTTON_HOVER,
+        )
 
     def add(self, entry: dict) -> None:
         self._history.insert(0, entry)
@@ -38,11 +44,13 @@ class HistoryPanel:
             ctk.CTkButton(
                 self._scroll,
                 text=entry["label"],
-                fg_color="transparent", hover_color="#3a3a3a",
-                anchor="w", height=28,
+                fg_color=theme.TRANSPARENT, hover_color=theme.SURFACE_2, text_color=theme.TEXT,
+                font=theme.font(theme.FONT_SIZE_BODY), anchor="w", height=28, corner_radius=theme.RADIUS_INPUT,
                 command=lambda e=entry: self._on_restore(e),
             ).pack(fill="x", pady=1)
 
     def _update_btn(self) -> None:
-        prefix = "▼" if self._visible else "▶"
-        self._btn_toggle.configure(text=f"{prefix}  Histórico ({len(self._history)})")
+        icon = "chevron-down" if self._visible else "chevron-right"
+        self._btn_toggle.configure(
+            text=f"Histórico ({len(self._history)})", image=get_icon(icon, 16, theme.TEXT_MUTED),
+        )

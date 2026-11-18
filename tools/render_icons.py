@@ -16,6 +16,7 @@ BASE_URL = f"https://cdn.jsdelivr.net/npm/lucide-static@{LUCIDE_VERSION}"
 SIZE_PX = 48
 
 ICONS = [
+    "chevron-down",
     "chevron-left",
     "chevron-right",
     "eye",
@@ -23,6 +24,7 @@ ICONS = [
     "file-check",
     "file-search",
     "log-out",
+    "square",
     "upload",
 ]
 
