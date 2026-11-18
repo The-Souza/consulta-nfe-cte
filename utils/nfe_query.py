@@ -8,6 +8,7 @@ CONFIRM_ABOVE = 500   # ask before querying more than this
 MAX_INVOICES = 5000   # refuse above this
 
 _SEPARATORS = re.compile(r"[\s,;]+")
+_SPACED_HYPHEN = re.compile(r"\s*-\s*")
 _NUMBER = re.compile(r"^\d+$")
 _RANGE = re.compile(r"^(\d+)-(\d+)$")
 
@@ -24,6 +25,7 @@ def _count(n: int) -> str:
 
 
 def parse_query(text: str) -> ParsedQuery:
+    text = _SPACED_HYPHEN.sub("-", text)  # "4516661 - 4516680" is a range, not three tokens
     tokens = [t for t in _SEPARATORS.split(text.strip()) if t]
     if not tokens:
         return ParsedQuery()

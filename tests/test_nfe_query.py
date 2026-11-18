@@ -26,6 +26,18 @@ def test_range():
     assert parsed.label == "Faixa · 20 NF-es"
 
 
+@pytest.mark.parametrize("text", ["4516661 - 4516680", "4516661 -4516680", "4516661-  4516680"])
+def test_range_with_spaces_around_the_hyphen(text):
+    parsed = parse_query(text)
+
+    assert parsed.invoices == list(range(4516661, 4516681))
+    assert parsed.label == "Faixa · 20 NF-es"
+
+
+def test_ranges_with_spaces_inside_a_list():
+    assert parse_query("1 - 3, 10").invoices == [1, 2, 3, 10]
+
+
 def test_range_of_one_is_a_single_invoice():
     parsed = parse_query("4516661-4516661")
 
