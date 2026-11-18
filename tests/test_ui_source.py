@@ -12,10 +12,7 @@ THEME_FILE = "ui/theme.py"
 HEX_LITERAL = re.compile(r"""["']#[0-9a-fA-F]{3,8}["']""")
 
 # Files still using hardcoded colors; cleaned up by the status-badges PR, which removes this list.
-LEGACY_HEX_FILES = {
-    "ui/frames/search.py",
-    "ui/frames/upload.py",
-}
+LEGACY_HEX_FILES: set[str] = set()
 
 
 def _ui_sources() -> list[str]:
