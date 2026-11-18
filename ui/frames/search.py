@@ -37,6 +37,7 @@ class SearchFrame(ctk.CTkFrame):
         self._on_logout    = on_logout
         self._on_back    = on_back
         self._results: dict[int, dict] = {}  # NF-e -> row, in query order
+        self._row_widgets: dict[int, tuple] = {}  # NF-e -> (row frame, row number) of the rows on screen
         self._current_entry: dict | None = None  # history entry of the results on screen
         self._searching  = False
         self._stop_event = threading.Event()
@@ -177,14 +178,30 @@ class SearchFrame(ctk.CTkFrame):
         else:
             self.btn_retry.pack_forget()
 
-    def _insert_row(self, parent, r: dict) -> None:
-        self._row_count += 1
-        texts = [str(self._row_count), str(r["NF-e"]), r["CT-e"], format_image(r.get("Imagem"))]
-        insert_row(parent, self._row_count, _COLS, texts, r["Status"], search_tone(r["Status"]))
+    def _insert_row(self, parent, r: dict, number: int | None = None, before=None) -> None:
+        if number is None:
+            self._row_count += 1
+            number = self._row_count
+        texts = [str(number), str(r["NF-e"]), r["CT-e"], format_image(r.get("Imagem"))]
+        row = insert_row(parent, number, _COLS, texts, r["Status"], search_tone(r["Status"]))
+        if before is not None:
+            row.pack_configure(before=before)
+        self._row_widgets[r["NF-e"]] = (row, number)
+
+    def _replace_row(self, r: dict) -> None:
+        """Swap the widget of a retried invoice in place; redrawing the whole table costs seconds."""
+        shown = self._row_widgets.get(r["NF-e"])
+        if shown is None or not _FILTERS[self.option_filter.get()](r):
+            self._redraw_table()  # visibility changed under an active filter (rare)
+            return
+        old_row, number = shown
+        self._insert_row(self.scroll, r, number, before=old_row)
+        old_row.destroy()
 
     def _clear_table(self) -> None:
         clear_scroll(self.scroll)
         self._results   = {}
+        self._row_widgets = {}
         self._row_count = 0
         self._current_entry = None
 
@@ -266,6 +283,7 @@ class SearchFrame(ctk.CTkFrame):
 
     def _redraw_table(self) -> None:
         clear_scroll(self.scroll)
+        self._row_widgets = {}
         self._row_count = 0
         predicate = _FILTERS[self.option_filter.get()]
         for r in self._rows():
@@ -283,7 +301,7 @@ class SearchFrame(ctk.CTkFrame):
         retried = r["NF-e"] in self._results
         self._results[r["NF-e"]] = r
         if retried:
-            self._redraw_table()  # same invoice queried again: update its row in place
+            self._replace_row(r)
         elif _FILTERS[self.option_filter.get()](r):
             self._insert_row(self.scroll, r)
         self._update_chips()
