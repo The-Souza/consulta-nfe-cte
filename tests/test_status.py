@@ -17,6 +17,11 @@ def test_search_tone_for_known_labels(label, expected):
     assert status.search_tone(label) is expected
 
 
+def test_connection_failure_has_connection_tone():
+    assert status.CONNECTION_FAILED == "Falha de conexão"
+    assert status.search_tone(status.CONNECTION_FAILED) is Tone.CONNECTION
+
+
 def test_search_labels_have_no_emoji():
     assert (status.SEARCH_OK, status.SEARCH_NO_CTE, status.SEARCH_NOT_FOUND) == ("OK", "Sem CT-e", "Não cadastrada")
 

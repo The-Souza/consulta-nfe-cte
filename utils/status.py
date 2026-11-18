@@ -15,11 +15,13 @@ class Tone(str, Enum):
 SEARCH_OK = "OK"
 SEARCH_NO_CTE = "Sem CT-e"
 SEARCH_NOT_FOUND = "Não cadastrada"
+CONNECTION_FAILED = "Falha de conexão"
 
 _SEARCH_TONES = {
     SEARCH_OK: Tone.OK,
     SEARCH_NO_CTE: Tone.WARNING,
     SEARCH_NOT_FOUND: Tone.ERROR,
+    CONNECTION_FAILED: Tone.CONNECTION,
 }
 
 _RENAME_STATUS = {

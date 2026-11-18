@@ -1,21 +1,92 @@
 import base64
+import threading
 import time
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+import urllib3
 
 from config import LOGIN_URL, CANHOTOS_URL, QUERY_HEADERS
-from utils.status import SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
+from utils.status import CONNECTION_FAILED, SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
 
-# The first request after opening the app is often much slower than the
-# server's usual response time (cold connection), so query timeouts are
-# generous to avoid false "Tempo de resposta esgotado" errors.
-QUERY_TIMEOUT = 30
-UPLOAD_TIMEOUT = 45
+UPLOAD_TIMEOUT = (5, 45)
+
+# (connect, read). The first request after opening the app is often slow (cold connection);
+# the retries in _get_json absorb that instead of a single very long timeout.
+TIMEOUT = (5, 25)
+RETRY_DELAYS = (1, 2, 4)
+MAX_RETRY_AFTER = 30
+
+
+class ConnectionFailed(Exception):
+    """The server stayed unreachable or unstable after every retry."""
+
+
+class SessionExpired(Exception):
+    """The server answered 401/403: the auth-token is no longer valid."""
+
+
+class Cancelled(Exception):
+    """The user cancelled the task while a retry was waiting."""
+
+
+def _wait(seconds: float, stop: threading.Event | None = None) -> None:
+    if stop is None:
+        time.sleep(seconds)
+    elif stop.wait(seconds):
+        raise Cancelled()
+
+
+def _retry_after(resp: requests.Response, default: float) -> float:
+    try:
+        seconds = float(resp.headers.get("Retry-After", ""))
+    except ValueError:  # missing, or an HTTP date
+        return default
+    return min(max(seconds, 0), MAX_RETRY_AFTER)
+
+
+def _get_json(
+    session: requests.Session,
+    url: str,
+    *,
+    params: dict | None = None,
+    headers: dict | None = None,
+    stop: threading.Event | None = None,
+) -> dict:
+    """GET that retries timeouts, connection errors, 429/5xx and non-JSON bodies (e.g. an HTML login page)."""
+    delays = iter(RETRY_DELAYS)
+    while True:
+        rate_limited: requests.Response | None = None
+        try:
+            resp = session.get(url, params=params, headers=headers, timeout=TIMEOUT)
+        except (requests.Timeout, requests.ConnectionError) as e:
+            last_error: Exception = e
+        else:
+            if resp.status_code in (401, 403):
+                raise SessionExpired(f"HTTP {resp.status_code}")
+            if resp.status_code == 429 or resp.status_code >= 500:
+                last_error = requests.HTTPError(f"HTTP {resp.status_code}", response=resp)
+                if resp.status_code == 429:
+                    rate_limited = resp
+            else:
+                resp.raise_for_status()
+                try:
+                    return resp.json()
+                except ValueError as e:
+                    last_error = e
+
+        delay = next(delays, None)
+        if delay is None:
+            raise ConnectionFailed(str(last_error)) from last_error
+        _wait(_retry_after(rate_limited, delay) if rate_limited is not None else delay, stop)
 
 
 def friendly_error(e: Exception) -> str:
+    if isinstance(e, ConnectionFailed):
+        return CONNECTION_FAILED
+    if isinstance(e, SessionExpired):
+        return "Sessão expirada"
     if isinstance(e, requests.exceptions.ConnectionError):
         return "Sem conexão com o servidor"
     if isinstance(e, requests.exceptions.Timeout):
@@ -29,7 +100,7 @@ def login(session: requests.Session, email: str, password: str) -> str:
     resp = session.post(
         LOGIN_URL,
         json={"email": email, "senha": password, "url": f"https://{domain}/"},
-        timeout=QUERY_TIMEOUT,
+        timeout=TIMEOUT,
     )
     if not resp.ok:
         raise ValueError("E-mail ou senha inválidos.")
@@ -41,16 +112,15 @@ def login(session: requests.Session, email: str, password: str) -> str:
     return data.get("usuario", {}).get("nome", "")
 
 
-def get_invoice(session: requests.Session, invoice_num: int) -> tuple[str, str, str]:
+def get_invoice(
+    session: requests.Session, invoice_num: int, stop: threading.Event | None = None,
+) -> tuple[str, str, str]:
     """GET invoice by number. Returns (cte_number, status_label, has_image)."""
     for attempt in range(2):
-        resp = session.get(
-            CANHOTOS_URL,
-            headers=QUERY_HEADERS,
-            params={"limit": 40, "numero": invoice_num, "offset": 0},
-            timeout=QUERY_TIMEOUT,
+        data = _get_json(
+            session, CANHOTOS_URL, headers=QUERY_HEADERS,
+            params={"limit": 40, "numero": invoice_num, "offset": 0}, stop=stop,
         )
-        data = resp.json()
         if data.get("data"):
             item = data["data"][0]
             cte = item.get("numeroCte")
@@ -59,13 +129,16 @@ def get_invoice(session: requests.Session, invoice_num: int) -> tuple[str, str, 
                 return str(cte), SEARCH_OK, has_image
             return "-", SEARCH_NO_CTE, has_image
         if attempt == 0:
-            time.sleep(0.5)
+            _wait(0.5, stop)
     return "-", SEARCH_NOT_FOUND, "-"
 
 
-def get_invoice_for_upload(session: requests.Session, invoice_num: str) -> tuple[str | None, str]:
+def get_invoice_for_upload(
+    session: requests.Session, invoice_num: str, stop: threading.Event | None = None,
+) -> tuple[str | None, str]:
     """GET invoice for upload. Returns (oid, api_status) or (None, error_label)."""
-    resp = session.get(
+    data = _get_json(
+        session,
         CANHOTOS_URL,
         headers=QUERY_HEADERS,
         params={
@@ -77,21 +150,18 @@ def get_invoice_for_upload(session: requests.Session, invoice_num: str) -> tuple
             "numero": invoice_num,
             "offset": 0,
         },
-        timeout=QUERY_TIMEOUT,
+        stop=stop,
     )
-    data = resp.json()
     if not data.get("data"):
         return None, "Não encontrada"
     item = data["data"][0]
     return item.get("oid"), item.get("status", "")
 
 
-def get_invoice_details(session: requests.Session, oid: str) -> dict:
+def get_invoice_details(session: requests.Session, oid: str, stop: threading.Event | None = None) -> dict:
     """GET full invoice record by oid."""
     headers = {**QUERY_HEADERS, "programa": "Canhoto"}
-    resp = session.get(f"{CANHOTOS_URL}/{oid}", headers=headers, timeout=QUERY_TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
+    return _get_json(session, f"{CANHOTOS_URL}/{oid}", headers=headers, stop=stop)
 
 
 def upload_invoice(
@@ -100,8 +170,14 @@ def upload_invoice(
     file_path: Path,
     full_data: dict,
     batch_date: str,
+    stop: threading.Event | None = None,
 ) -> tuple[bool, str | None]:
-    """POST invoice image upload. Returns (success, error_message)."""
+    """POST invoice image upload. Returns (success, error_message).
+
+    The portal refuses a second image for the same receipt, so the POST is only retried when the
+    connection was never made; anything else (read timeout, aborted connection) may already have
+    saved the image and fails right away.
+    """
     with open(file_path, "rb") as f:
         base64_img = base64.b64encode(f.read()).decode()
 
@@ -116,7 +192,28 @@ def upload_invoice(
         "validaDataEntrega": True,
     }
     headers = {**QUERY_HEADERS, "programa": "Canhoto"}
-    resp = session.post(f"{CANHOTOS_URL}/salvar", headers=headers, json=payload, timeout=UPLOAD_TIMEOUT)
+    delays = iter(RETRY_DELAYS)
+    while True:
+        try:
+            resp = session.post(f"{CANHOTOS_URL}/salvar", headers=headers, json=payload, timeout=UPLOAD_TIMEOUT)
+            break
+        except (requests.Timeout, requests.ConnectionError) as e:
+            delay = next(delays, None)
+            if not _is_connect_failure(e) or delay is None:
+                raise ConnectionFailed(str(e)) from e
+            _wait(delay, stop)
+
+    if resp.status_code in (401, 403):
+        raise SessionExpired(f"HTTP {resp.status_code}")
     if not resp.ok:
         return False, resp.text[:200]
     return True, None
+
+
+def _is_connect_failure(e: Exception) -> bool:
+    """True when the request certainly never reached the server (refused, DNS, connect timeout)."""
+    if isinstance(e, requests.ConnectTimeout):
+        return True
+    if isinstance(e, requests.ConnectionError) and e.args:
+        return isinstance(getattr(e.args[0], "reason", None), urllib3.exceptions.NewConnectionError)
+    return False
