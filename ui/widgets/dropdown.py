@@ -3,6 +3,9 @@ from typing import Callable
 
 import customtkinter as ctk
 
+from ui import theme
+from ui.icons import get_icon
+
 
 class FilterDropdown:
     """Select-style dropdown (label + arrow) with a custom-drawn popup list.
@@ -22,15 +25,17 @@ class FilterDropdown:
         self._just_closed  = False
 
         self._frame = ctk.CTkFrame(
-            parent, width=width, height=28, corner_radius=6,
-            border_width=1, border_color="gray", cursor="hand2",
+            parent, width=width, height=28, corner_radius=theme.RADIUS_INPUT, fg_color=theme.INPUT_BG,
+            border_width=1, border_color=theme.BORDER_INPUT, cursor="hand2",
         )
         self._frame.pack_propagate(False)
 
-        self._label = ctk.CTkLabel(self._frame, text=self._value, anchor="w")
+        self._label = ctk.CTkLabel(
+            self._frame, text=self._value, anchor="w", text_color=theme.TEXT, font=theme.font(theme.FONT_SIZE_BODY),
+        )
         self._label.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=4)
 
-        self._arrow = ctk.CTkLabel(self._frame, text="▾", width=24)
+        self._arrow = ctk.CTkLabel(self._frame, text="", width=24, image=get_icon("chevron-down", 16, theme.TEXT_MUTED))
         self._arrow.pack(side="right", fill="y", padx=(0, 4), pady=4)
 
         for widget in (self._frame, self._label, self._arrow):
@@ -65,18 +70,20 @@ class FilterDropdown:
         # rescales geometry() strings for DPI, which would throw off the
         # pixel-accurate right-alignment computed above.
         popup = tkinter.Toplevel(self._frame)
-        popup.configure(bg="#252525")
+        popup.configure(bg=theme.SURFACE)
         popup.overrideredirect(True)
         popup.attributes("-topmost", True)
         popup.geometry(f"{popup_width}x{row_height * len(self._options) + 4}+{x}+{y}")
 
-        frame = ctk.CTkFrame(popup, fg_color="#252525", border_width=1, border_color="#3a3a3a", corner_radius=6)
+        frame = ctk.CTkFrame(
+            popup, fg_color=theme.SURFACE, border_width=1, border_color=theme.BORDER, corner_radius=theme.RADIUS_INPUT,
+        )
         frame.pack(fill="both", expand=True)
         for opt in self._options:
             ctk.CTkButton(
                 frame, text=opt, height=row_height - 2, corner_radius=0,
-                anchor="w", fg_color="transparent", hover_color="#3a3a3a",
-                text_color="#e0e0e0",
+                anchor="w", fg_color=theme.TRANSPARENT, hover_color=theme.SURFACE_2,
+                text_color=theme.TEXT, font=theme.font(theme.FONT_SIZE_BODY),
                 command=lambda o=opt: self._select(o),
             ).pack(fill="x", padx=2, pady=1)
 

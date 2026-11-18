@@ -4,8 +4,7 @@ from typing import Callable
 
 import customtkinter as ctk
 
-from ui import theme
-from utils.status import search_tone
+from utils.status import Tone, search_tone
 from ui.widgets.chip import make_chip
 from ui.widgets.dropdown import FilterDropdown
 from ui.widgets.history import HistoryPanel
@@ -112,11 +111,11 @@ class SearchFrame(ctk.CTkFrame):
         stat = ctk.CTkFrame(bar, fg_color="transparent")
         stat.pack(side="left")
 
-        self.chip_ok      = make_chip(stat, "#4CAF50", "#1a3a1a")
-        self.chip_no_cte  = make_chip(stat, "#FFC107", "#3a3000")
-        self.chip_not_found = make_chip(stat, "#F44336", "#3a0f0f")
-        self.chip_img_yes = make_chip(stat, "#4FC3F7", "#0d2b3a")
-        self.chip_img_no  = make_chip(stat, "#BDBDBD", "#333333")
+        self.chip_ok      = make_chip(stat, Tone.OK)
+        self.chip_no_cte  = make_chip(stat, Tone.WARNING)
+        self.chip_not_found = make_chip(stat, Tone.ERROR)
+        self.chip_img_yes = make_chip(stat, Tone.INFO)
+        self.chip_img_no  = make_chip(stat, Tone.NEUTRAL)
         self._reset_chips()
 
         self.btn_export = ctk.CTkButton(
@@ -153,9 +152,8 @@ class SearchFrame(ctk.CTkFrame):
 
     def _insert_row(self, parent, r: dict) -> None:
         self._row_count += 1
-        text_color, bg_color = theme.STATUS[search_tone(r["Status"]).value]
         texts = [str(self._row_count), str(r["NF-e"]), r["CT-e"], format_image(r.get("Imagem"))]
-        insert_row(parent, self._row_count, _COLS, texts, r["Status"], text_color, bg_color)
+        insert_row(parent, self._row_count, _COLS, texts, r["Status"], search_tone(r["Status"]))
 
     def _clear_table(self) -> None:
         clear_scroll(self.scroll)

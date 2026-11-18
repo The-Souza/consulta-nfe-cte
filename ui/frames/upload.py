@@ -5,8 +5,7 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 
-from ui import theme
-from utils.status import Tone
+from utils.status import Tone, rename_status
 from ui.widgets.chip import make_chip
 from ui.widgets.history import HistoryPanel
 from ui.widgets.progress import make_progress
@@ -92,9 +91,9 @@ class UploadFrame(ctk.CTkFrame):
 
         stat = ctk.CTkFrame(bar, fg_color="transparent")
         stat.pack(side="left")
-        self.chip_ok    = make_chip(stat, "#4CAF50", "#1a3a1a")
-        self.chip_dup   = make_chip(stat, "#FFC107", "#3a3000")
-        self.chip_error = make_chip(stat, "#F44336", "#3a0f0f")
+        self.chip_ok    = make_chip(stat, Tone.OK)
+        self.chip_dup   = make_chip(stat, Tone.WARNING)
+        self.chip_error = make_chip(stat, Tone.ERROR)
         self._reset_rename_chips()
 
         self._frame_upload_bar = ctk.CTkFrame(bar, fg_color="transparent")
@@ -172,15 +171,9 @@ class UploadFrame(ctk.CTkFrame):
 
     def _insert_rename_row(self, filename: str, invoice_num: str | None, status: str) -> None:
         self._row_count += 1
-        _COR = {
-            "ok":             ("✅ Renomeada", "#4CAF50", "#1a3a1a"),
-            "duplicata":      ("⚠ Duplicata",  "#FFC107", "#3a3000"),
-            "nao_encontrada": ("❌ Não lida",  "#F44336", "#3a0f0f"),
-            "erro":           ("❌ Erro",       "#F44336", "#3a0f0f"),
-        }
-        label, text_color, bg_color = _COR.get(status, ("❌ Erro", "#F44336", "#3a0f0f"))
+        label, tone = rename_status(status)
         insert_row(self.scroll, self._row_count, _COLS_R,
-                   [str(self._row_count), filename, invoice_num or "-"], label, text_color, bg_color)
+                   [str(self._row_count), filename, invoice_num or "-"], label, tone)
         self._rows.append((filename, invoice_num, status))
         if status == "ok":
             self._cnt_ok += 1
@@ -194,9 +187,7 @@ class UploadFrame(ctk.CTkFrame):
 
     def _insert_upload_row(self, invoice_num: str, tone: Tone, text: str) -> None:
         self._row_count += 1
-        text_color, bg_color = theme.STATUS[tone.value]
-        insert_row(self.scroll, self._row_count, _COLS_U,
-                   [str(self._row_count), invoice_num], text, text_color, bg_color)
+        insert_row(self.scroll, self._row_count, _COLS_U, [str(self._row_count), invoice_num], text, tone)
         self._rows.append((invoice_num, tone, text))
         if tone is Tone.OK:
             self._cnt_ok += 1

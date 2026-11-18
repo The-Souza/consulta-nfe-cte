@@ -15,9 +15,6 @@ HEX_LITERAL = re.compile(r"""["']#[0-9a-fA-F]{3,8}["']""")
 LEGACY_HEX_FILES = {
     "ui/frames/search.py",
     "ui/frames/upload.py",
-    "ui/widgets/dropdown.py",
-    "ui/widgets/history.py",
-    "ui/widgets/table.py",
 }
 
 
