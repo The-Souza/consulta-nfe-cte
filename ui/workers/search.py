@@ -36,7 +36,10 @@ class SearchWorker:
                 return
 
             try:
-                cte, status, has_image = api.get_invoice(self._session, invoice_num)
+                cte, status, has_image = api.get_invoice(self._session, invoice_num, stop=self._stop)
+            except api.Cancelled:
+                self._after(0, self._on_cancel)
+                return
             except Exception as e:
                 cte, status, has_image = "-", api.friendly_error(e), "-"
 

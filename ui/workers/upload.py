@@ -52,21 +52,26 @@ class UploadWorker:
             tone, text = Tone.ERROR, ""
             for attempt in range(attempts):
                 try:
-                    oid, api_status = api.get_invoice_for_upload(self._session, invoice_num)
+                    oid, api_status = api.get_invoice_for_upload(self._session, invoice_num, stop=self._stop)
                     if oid is None:
                         tone, text = Tone.ERROR, api_status
                     elif api_status != "PENDENTE":
                         shutil.move(str(path), str(non_pending_dir / filename))
                         tone, text = Tone.WARNING, api_status
                     else:
-                        full_data = api.get_invoice_details(self._session, oid)
-                        ok, err = api.upload_invoice(self._session, invoice_num, path, full_data, self._batch_date)
+                        full_data = api.get_invoice_details(self._session, oid, stop=self._stop)
+                        ok, err = api.upload_invoice(
+                            self._session, invoice_num, path, full_data, self._batch_date, stop=self._stop,
+                        )
                         if ok:
                             shutil.move(str(path), str(pending_dir / filename))
                             tone, text = Tone.OK, "Enviado"
                         else:
                             tone, text = Tone.ERROR, err
                     break
+                except api.Cancelled:
+                    self._after(0, self._on_cancel)
+                    return
                 except Exception as e:
                     if attempt + 1 < attempts:
                         time.sleep(0.8)
