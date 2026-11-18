@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 import api
+from utils.status import Tone
 
 
 class UploadWorker:
@@ -48,32 +49,32 @@ class UploadWorker:
             path        = Path(folder) / filename
 
             attempts = 2 if i == 0 else 1
-            api_status = ""
+            tone, text = Tone.ERROR, ""
             for attempt in range(attempts):
                 try:
                     oid, api_status = api.get_invoice_for_upload(self._session, invoice_num)
                     if oid is None:
-                        api_status = "❌ Não encontrada"
+                        tone, text = Tone.ERROR, api_status
                     elif api_status != "PENDENTE":
                         shutil.move(str(path), str(non_pending_dir / filename))
-                        api_status = f"⚠ {api_status}"
+                        tone, text = Tone.WARNING, api_status
                     else:
                         full_data = api.get_invoice_details(self._session, oid)
                         ok, err = api.upload_invoice(self._session, invoice_num, path, full_data, self._batch_date)
                         if ok:
                             shutil.move(str(path), str(pending_dir / filename))
-                            api_status = "✅ Enviado"
+                            tone, text = Tone.OK, "Enviado"
                         else:
-                            api_status = f"❌ {err}"
+                            tone, text = Tone.ERROR, err
                     break
                 except Exception as e:
                     if attempt + 1 < attempts:
                         time.sleep(0.8)
                         continue
-                    api_status = f"❌ {api.friendly_error(e)}"
+                    tone, text = Tone.ERROR, api.friendly_error(e)
 
             prog    = (i + 1) / total
             elapsed = time.time() - t0
-            self._after(0, self._on_update, invoice_num, api_status, prog, i + 1, total, elapsed)
+            self._after(0, self._on_update, invoice_num, tone, text, prog, i + 1, total, elapsed)
 
         self._after(0, self._on_done)

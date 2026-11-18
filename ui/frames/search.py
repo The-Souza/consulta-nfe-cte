@@ -4,6 +4,8 @@ from typing import Callable
 
 import customtkinter as ctk
 
+from ui import theme
+from utils.status import search_tone
 from ui.widgets.chip import make_chip
 from ui.widgets.dropdown import FilterDropdown
 from ui.widgets.history import HistoryPanel
@@ -151,15 +153,7 @@ class SearchFrame(ctk.CTkFrame):
 
     def _insert_row(self, parent, r: dict) -> None:
         self._row_count += 1
-        _COR = {
-            "✅": ("#4CAF50", "#1a3a1a"),
-            "⚠":  ("#FFC107", "#3a3000"),
-            "❌": ("#F44336", "#3a0f0f"),
-        }
-        text_color, bg_color = next(
-            ((f, b) for k, (f, b) in _COR.items() if k in r["Status"]),
-            (None, None),
-        )
+        text_color, bg_color = theme.STATUS[search_tone(r["Status"]).value]
         texts = [str(self._row_count), str(r["NF-e"]), r["CT-e"], format_image(r.get("Imagem"))]
         insert_row(parent, self._row_count, _COLS, texts, r["Status"], text_color, bg_color)
 

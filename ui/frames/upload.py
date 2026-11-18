@@ -5,6 +5,8 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 
+from ui import theme
+from utils.status import Tone
 from ui.widgets.chip import make_chip
 from ui.widgets.history import HistoryPanel
 from ui.widgets.progress import make_progress
@@ -190,16 +192,15 @@ class UploadFrame(ctk.CTkFrame):
         self.chip_dup.configure(text=f"⚠  {self._cnt_dup}  Duplicatas")
         self.chip_error.configure(text=f"❌  {self._cnt_error}  Não lidas")
 
-    def _insert_upload_row(self, invoice_num: str, status: str) -> None:
+    def _insert_upload_row(self, invoice_num: str, tone: Tone, text: str) -> None:
         self._row_count += 1
-        _COR = {"✅": ("#4CAF50", "#1a3a1a"), "⚠": ("#FFC107", "#3a3000"), "❌": ("#F44336", "#3a0f0f")}
-        text_color, bg_color = next(((f, b) for k, (f, b) in _COR.items() if k in status), ("#aaa", "transparent"))
+        text_color, bg_color = theme.STATUS[tone.value]
         insert_row(self.scroll, self._row_count, _COLS_U,
-                   [str(self._row_count), invoice_num], status, text_color, bg_color)
-        self._rows.append((invoice_num, status))
-        if "✅" in status:
+                   [str(self._row_count), invoice_num], text, text_color, bg_color)
+        self._rows.append((invoice_num, tone, text))
+        if tone is Tone.OK:
             self._cnt_ok += 1
-        elif "⚠" in status:
+        elif tone is Tone.WARNING:
             self._cnt_dup += 1
         else:
             self._cnt_error += 1
@@ -337,11 +338,13 @@ class UploadFrame(ctk.CTkFrame):
         )
         threading.Thread(target=worker.run, daemon=True).start()
 
-    def _update_upload(self, invoice_num: str, status: str, prog: float, current: int, total: int, elapsed: float) -> None:
+    def _update_upload(
+        self, invoice_num: str, tone: Tone, text: str, prog: float, current: int, total: int, elapsed: float,
+    ) -> None:
         self.progressbar.set(prog)
         m, s = divmod(int(elapsed), 60)
         self.lbl_progress.configure(text=f"NF-e {invoice_num}  ({current}/{total})  {m:02d}:{s:02d}")
-        self._insert_upload_row(invoice_num, status)
+        self._insert_upload_row(invoice_num, tone, text)
 
     def _finish_upload(self, cancelled: bool, folder: str = "", date_str: str = "") -> None:
         self._running = False
@@ -390,8 +393,8 @@ class UploadFrame(ctk.CTkFrame):
             self._reset_upload_chips()
             self.hdr_rename.pack_forget()
             self.hdr_upload.pack(fill="x")
-            for invoice_num, status in entry["rows"]:
-                self._insert_upload_row(invoice_num, status)
+            for invoice_num, tone, text in entry["rows"]:
+                self._insert_upload_row(invoice_num, tone, text)
             self._output_folder = entry["folder"]
             self.entry_date.delete(0, "end")
             self.entry_date.insert(0, entry["date_str"])
