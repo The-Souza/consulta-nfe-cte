@@ -6,7 +6,15 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ## [2.0.0-alpha.1] — em andamento
 
+### Adicionado
+- Consulta: botão "Tentar de novo só essas (N)", que reconsulta só as NF-es com falha de conexão e atualiza as linhas, os contadores e o histórico no lugar.
+- Consulta: chip e filtro "Falha de conexão".
+- Se a sessão expirar no meio de uma busca, o app entra de novo sozinho e continua. Se não conseguir, para e pede para entrar de novo. A senha usada para isso fica só na memória enquanto o app está aberto.
+
 ### Alterado
+- Consulta: no fim da busca, as NF-es com falha de conexão são consultadas de novo automaticamente, uma vez.
+- Consulta: depois de 3 falhas de conexão seguidas, a busca pausa 10 segundos ("Servidor instável, aguardando…") antes de continuar.
+- O botão "Cancelar" também interrompe as esperas entre tentativas.
 - Consulta e upload repetem a chamada sozinhos quando o servidor oscila (tempo esgotado, queda de conexão, servidor sobrecarregado ou sessão devolvendo página em vez de dados): até 3 novas tentativas, com espera crescente.
 - O que continuar falhando aparece como "Falha de conexão", com cor própria, diferente de "Não cadastrada". O Excel também mostra esse status.
 - O envio da imagem só é repetido quando a conexão nem chegou a ser feita, porque o portal não aceita uma segunda imagem para o mesmo canhoto.
