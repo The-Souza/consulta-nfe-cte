@@ -46,6 +46,7 @@ class SearchFrame(ctk.CTkFrame):
         self._stop_event = threading.Event()
         self._row_count    = 0
         self._btn_search_style: dict = {}
+        self._last_query: str | None = None  # field text the parse label was computed for
         self._build(user_name)
 
     # ------------------------------------------------------------------
@@ -231,7 +232,13 @@ class SearchFrame(ctk.CTkFrame):
         self._on_logout()
 
     def _on_query_change(self, _event=None) -> None:
-        parsed = parse_query(self.entry_query.get())
+        text = self.entry_query.get()
+        # KeyRelease also fires for Enter, arrows and Shift: only react when the text really changed,
+        # otherwise releasing the Enter that asked for confirmation would hide it right away.
+        if text == self._last_query:
+            return
+        self._last_query = text
+        parsed = parse_query(text)
         color = theme.STATUS[Tone.ERROR.value][0] if parsed.label and not parsed.valid else theme.TEXT_MUTED
         self.lbl_parse.configure(text=parsed.label, text_color=color)
         self._confirm.hide()  # a pending confirmation was for the old text
@@ -254,7 +261,8 @@ class SearchFrame(ctk.CTkFrame):
         self._begin_search(query, parsed.invoices)
 
     def _begin_search(self, query: str, invoices: list[int]) -> None:
-        self._confirm.hide()
+        if self._searching:  # "Consultar" on the banner while a retry is already running
+            return
         self._clear_table()
         self.option_filter.set("Todos")
         self._reset_chips()
@@ -268,6 +276,7 @@ class SearchFrame(ctk.CTkFrame):
             self._run(failures, self._current_entry["query"], retry=True)
 
     def _run(self, invoices: list[int], query: str, retry: bool) -> None:
+        self._confirm.hide()
         self._searching = True
         self._stop_event.clear()
         set_message(self.lbl_progress, "")
@@ -368,6 +377,7 @@ class SearchFrame(ctk.CTkFrame):
     def _clear(self) -> None:
         self.entry_query.delete(0, "end")
         self._on_query_change()
+        self._confirm.hide()
         self._clear_table()
         set_message(self.lbl_progress, "")
         self.progressbar.set(0)
@@ -420,6 +430,7 @@ class SearchFrame(ctk.CTkFrame):
         self.entry_query.delete(0, "end")
         self.entry_query.insert(0, entry["query"])
         self._on_query_change()
+        self._confirm.hide()
 
         self._clear_table()
         self._results = {r["NF-e"]: r for r in entry["results"]}
