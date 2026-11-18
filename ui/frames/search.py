@@ -29,9 +29,10 @@ _FILTERS: dict[str, Callable[[dict], bool]] = {
 
 
 class SearchFrame(ctk.CTkFrame):
-    def __init__(self, parent, session, user_name, on_logout, on_back=None):
+    def __init__(self, parent, session, user_name, on_logout, on_back=None, relogin: Callable[[], None] | None = None):
         super().__init__(parent, fg_color="transparent")
         self._session      = session
+        self._relogin      = relogin
         self._on_logout    = on_logout
         self._on_back    = on_back
         self._results    = []

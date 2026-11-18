@@ -1,6 +1,7 @@
 import requests
 import customtkinter as ctk
 
+import api
 from config import ICON_FILE
 from ui.frames.login import LoginFrame
 from ui.frames.home import HomeFrame
@@ -26,6 +27,8 @@ class App(ctk.CTk):
         self.session.cookies.set("timezone-offset", "180")
 
         self._user_name     = ""
+        # Kept only in memory, to log in again when the session expires mid-task (never written to disk).
+        self._credentials: tuple[str, str] | None = None
         self._home_frame    = None
         self._search_frame  = None
         self._upload_frame  = None
@@ -37,8 +40,15 @@ class App(ctk.CTk):
     # NAVEGAÇÃO
     # ------------------------------------------------------------------
 
-    def _show_home(self, user_name: str) -> None:
+    def _relogin(self) -> None:
+        """Called from worker threads; only touches the session, never widgets."""
+        if self._credentials is None:
+            raise RuntimeError("no credentials in memory")
+        api.login(self.session, *self._credentials)
+
+    def _show_home(self, user_name: str, email: str, password: str) -> None:
         self._user_name = user_name
+        self._credentials = (email, password)
         self._login_frame.pack_forget()
         self.geometry("520x500")
         self.resizable(False, False)
@@ -61,6 +71,7 @@ class App(ctk.CTk):
             self, self.session, self._user_name,
             on_logout=self._back_to_login,
             on_back=self._back_to_home,
+            relogin=self._relogin,
         )
         self._search_frame.pack(fill="both", expand=True)
 
@@ -74,6 +85,7 @@ class App(ctk.CTk):
             self, self.session, self._user_name,
             on_logout=self._back_to_login,
             on_back=self._back_to_home,
+            relogin=self._relogin,
         )
         self._upload_frame.pack(fill="both", expand=True)
 
@@ -89,6 +101,7 @@ class App(ctk.CTk):
             self._home_frame.pack(fill="both", expand=True)
 
     def _back_to_login(self) -> None:
+        self._credentials = None
         self.session.cookies.clear()
         self.session.cookies.set("timezone-offset", "180")
 
