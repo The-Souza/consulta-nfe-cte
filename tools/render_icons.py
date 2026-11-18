@@ -19,13 +19,17 @@ ICONS = [
     "chevron-down",
     "chevron-left",
     "chevron-right",
+    "download",
     "eye",
     "eye-off",
     "file-check",
     "file-search",
     "log-out",
+    "rotate-cw",
+    "search",
     "square",
     "upload",
+    "wifi-off",
 ]
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
