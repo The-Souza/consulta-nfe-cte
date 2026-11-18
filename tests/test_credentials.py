@@ -21,111 +21,96 @@ def fake_keyring():
         yield fake
 
 
-def test_clear_removes_saved_password_and_email(config_file, fake_keyring):
+def _saved(config_file) -> dict:
+    return json.loads(config_file.read_text(encoding="utf-8"))
+
+
+def _deleted(fake_keyring) -> set[str]:
+    return {c.args[1] for c in fake_keyring.delete_password.call_args_list}
+
+
+# forget_password ------------------------------------------------------------
+
+def test_forget_password_removes_password_and_keeps_email(config_file, fake_keyring):
     config_file.write_text(json.dumps({"email": "user@example.com"}), encoding="utf-8")
 
-    credentials.clear()
+    credentials.forget_password("user@example.com")
 
     fake_keyring.delete_password.assert_called_once_with(credentials._KEYRING_SERVICE, "user@example.com")
-    assert "email" not in json.loads(config_file.read_text(encoding="utf-8"))
+    assert _saved(config_file) == {"email": "user@example.com"}
 
 
-def test_clear_keeps_other_config_keys(config_file, fake_keyring):
-    config_file.write_text(json.dumps({"email": "user@example.com", "other": 1}), encoding="utf-8")
-
-    credentials.clear()
-
-    assert json.loads(config_file.read_text(encoding="utf-8")) == {"other": 1}
-
-
-def test_clear_without_saved_login_does_nothing(config_file, fake_keyring):
-    credentials.clear()
-
-    fake_keyring.delete_password.assert_not_called()
-    assert not config_file.exists()
-
-
-def test_clear_ignores_missing_keyring_entry(config_file, fake_keyring):
-    config_file.write_text(json.dumps({"email": "user@example.com"}), encoding="utf-8")
-    fake_keyring.delete_password.side_effect = keyring.errors.PasswordDeleteError("not found")
-
-    credentials.clear()
-
-    assert "email" not in json.loads(config_file.read_text(encoding="utf-8"))
-
-
-def test_clear_with_corrupt_config_does_not_raise(config_file, fake_keyring):
-    config_file.write_text("{not json", encoding="utf-8")
-
-    credentials.clear()
-
-    fake_keyring.delete_password.assert_not_called()
-
-
-def test_clear_removes_password_of_login_email_when_different_from_saved(config_file, fake_keyring):
+def test_forget_password_saves_the_login_email(config_file, fake_keyring):
     config_file.write_text(json.dumps({"email": "saved@example.com"}), encoding="utf-8")
 
-    credentials.clear("other@example.com")
+    credentials.forget_password("other@example.com")
 
-    deleted = {c.args[1] for c in fake_keyring.delete_password.call_args_list}
-    assert deleted == {"saved@example.com", "other@example.com"}
+    assert _deleted(fake_keyring) == {"saved@example.com", "other@example.com"}
+    assert _saved(config_file)["email"] == "other@example.com"
 
 
-def test_clear_deletes_once_when_login_email_is_the_saved_one(config_file, fake_keyring):
-    config_file.write_text(json.dumps({"email": "user@example.com"}), encoding="utf-8")
-
-    credentials.clear("user@example.com")
+def test_forget_password_without_config_creates_it_with_email(config_file, fake_keyring):
+    credentials.forget_password("user@example.com")
 
     fake_keyring.delete_password.assert_called_once_with(credentials._KEYRING_SERVICE, "user@example.com")
+    assert _saved(config_file) == {"email": "user@example.com"}
 
 
-def test_clear_without_config_still_removes_login_password(config_file, fake_keyring):
-    credentials.clear("user@example.com")
+def test_forget_password_keeps_other_config_keys(config_file, fake_keyring):
+    config_file.write_text(json.dumps({"email": "user@example.com", "other": 1}), encoding="utf-8")
 
-    fake_keyring.delete_password.assert_called_once_with(credentials._KEYRING_SERVICE, "user@example.com")
-    assert not config_file.exists()
+    credentials.forget_password("user@example.com")
 
-
-def test_clear_with_corrupt_config_still_removes_login_password(config_file, fake_keyring):
-    config_file.write_text("{not json", encoding="utf-8")
-
-    credentials.clear("user@example.com")
-
-    fake_keyring.delete_password.assert_called_once_with(credentials._KEYRING_SERVICE, "user@example.com")
+    assert _saved(config_file) == {"email": "user@example.com", "other": 1}
 
 
-@pytest.mark.parametrize("content", ["[]", "null", '"text"', "42"])
-def test_clear_with_non_object_json_does_not_raise(config_file, fake_keyring, content):
+def test_forget_password_ignores_missing_keyring_entry(config_file, fake_keyring):
+    fake_keyring.delete_password.side_effect = keyring.errors.PasswordDeleteError("not found")
+
+    credentials.forget_password("user@example.com")
+
+    assert _saved(config_file) == {"email": "user@example.com"}
+
+
+@pytest.mark.parametrize("content", ["{not json", "[]", "null", '"text"', "42"])
+def test_forget_password_replaces_unreadable_config(config_file, fake_keyring, content):
     config_file.write_text(content, encoding="utf-8")
 
-    credentials.clear("user@example.com")
+    credentials.forget_password("user@example.com")
 
     fake_keyring.delete_password.assert_called_once_with(credentials._KEYRING_SERVICE, "user@example.com")
+    assert _saved(config_file) == {"email": "user@example.com"}
 
 
-def test_clear_ignores_keyring_backend_errors(config_file, fake_keyring):
-    config_file.write_text(json.dumps({"email": "user@example.com"}), encoding="utf-8")
-    fake_keyring.delete_password.side_effect = keyring.errors.KeyringError("backend unavailable")
+@pytest.mark.parametrize(
+    "error", [keyring.errors.KeyringError("backend unavailable"), RuntimeError("access denied")]
+)
+def test_forget_password_ignores_keyring_errors(config_file, fake_keyring, error):
+    config_file.write_text(json.dumps({"email": "saved@example.com"}), encoding="utf-8")
+    fake_keyring.delete_password.side_effect = error
 
-    credentials.clear()
-
-    assert "email" not in json.loads(config_file.read_text(encoding="utf-8"))
-
-
-def test_clear_ignores_non_keyring_backend_errors(config_file, fake_keyring):
-    config_file.write_text(json.dumps({"email": "user@example.com"}), encoding="utf-8")
-    fake_keyring.delete_password.side_effect = RuntimeError("credential manager access denied")
-
-    credentials.clear("other@example.com")
+    credentials.forget_password("other@example.com")
 
     assert fake_keyring.delete_password.call_count == 2
-    assert "email" not in json.loads(config_file.read_text(encoding="utf-8"))
+    assert _saved(config_file)["email"] == "other@example.com"
 
 
-def test_clear_ignores_config_write_errors(config_file, fake_keyring):
-    config_file.write_text(json.dumps({"email": "user@example.com"}), encoding="utf-8")
-
+def test_forget_password_ignores_config_write_errors(config_file, fake_keyring):
     with mock.patch.object(type(config_file), "write_text", side_effect=PermissionError("read-only")):
-        credentials.clear()
+        credentials.forget_password("user@example.com")
 
     fake_keyring.delete_password.assert_called_once()
+
+
+# remember_by_default --------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("email", "password", "expected"),
+    [
+        ("", "", True),                       # first use: nothing saved yet
+        ("user@example.com", "secret", True),  # chose to remember
+        ("user@example.com", "", False),       # chose to keep only the email
+    ],
+)
+def test_remember_by_default_follows_saved_state(email, password, expected):
+    assert credentials.remember_by_default(email, password) is expected

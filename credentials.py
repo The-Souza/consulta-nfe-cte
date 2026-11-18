@@ -33,22 +33,30 @@ def load() -> tuple[str, str]:
     return email, password
 
 
-def _read_config() -> dict | None:
+def remember_by_default(email: str, password: str) -> bool:
+    """Initial state of 'remember password': on for first use or a saved password, off when only
+    the email is saved (the user already chose not to keep the password)."""
+    return bool(password) or not email
+
+
+def _read_config() -> dict:
+    """config.json as a dict; missing, unreadable or non-object content counts as empty."""
     if not _CONFIG.exists():
-        return None
+        return {}
     try:
         data = json.loads(_CONFIG.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        logger.warning("Could not read %s while clearing credentials", _CONFIG, exc_info=True)
-        return None
-    return data if isinstance(data, dict) else None
+        logger.warning("Could not read %s", _CONFIG, exc_info=True)
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
-def clear(email: str = "") -> None:
-    """Forget the saved login and the password of `email`. Never raises: failures are only logged,
-    because this runs right after a successful login."""
+def forget_password(email: str) -> None:
+    """Keep `email` for the next login but remove the stored passwords (of `email` and of the
+    previously saved email). Never raises: failures are only logged, because this runs right after
+    a successful login."""
     data = _read_config()
-    saved_email = data.get("email", "") if data else ""
+    saved_email = data.get("email", "")
 
     for address in {saved_email, email} - {""}:
         try:
@@ -59,9 +67,8 @@ def clear(email: str = "") -> None:
             # Backends may raise raw OS errors (e.g. access denied), not only KeyringError.
             logger.warning("Could not remove saved password from the keyring", exc_info=True)
 
-    if data and "email" in data:
-        del data["email"]
-        try:
-            _CONFIG.write_text(json.dumps(data), encoding="utf-8")
-        except OSError:
-            logger.warning("Could not update %s while clearing credentials", _CONFIG, exc_info=True)
+    data["email"] = email
+    try:
+        _CONFIG.write_text(json.dumps(data), encoding="utf-8")
+    except OSError:
+        logger.warning("Could not update %s", _CONFIG, exc_info=True)
