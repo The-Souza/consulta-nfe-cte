@@ -1,4 +1,5 @@
 import base64
+import threading
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -13,6 +14,73 @@ from utils.status import SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
 # generous to avoid false "Tempo de resposta esgotado" errors.
 QUERY_TIMEOUT = 30
 UPLOAD_TIMEOUT = 45
+
+TIMEOUT = (5, 25)  # (connect, read)
+RETRY_DELAYS = (1, 2, 4)
+MAX_RETRY_AFTER = 30
+
+
+class ConnectionFailed(Exception):
+    """The server stayed unreachable or unstable after every retry."""
+
+
+class SessionExpired(Exception):
+    """The server answered 401/403: the auth-token is no longer valid."""
+
+
+class Cancelled(Exception):
+    """The user cancelled the task while a retry was waiting."""
+
+
+def _wait(seconds: float, stop: threading.Event | None = None) -> None:
+    if stop is None:
+        time.sleep(seconds)
+    elif stop.wait(seconds):
+        raise Cancelled()
+
+
+def _retry_after(resp: requests.Response, default: float) -> float:
+    try:
+        seconds = float(resp.headers.get("Retry-After", ""))
+    except ValueError:  # missing, or an HTTP date
+        return default
+    return min(max(seconds, 0), MAX_RETRY_AFTER)
+
+
+def _get_json(
+    session: requests.Session,
+    url: str,
+    *,
+    params: dict | None = None,
+    headers: dict | None = None,
+    stop: threading.Event | None = None,
+) -> dict:
+    """GET that retries timeouts, connection errors, 429/5xx and non-JSON bodies (e.g. an HTML login page)."""
+    delays = iter(RETRY_DELAYS)
+    while True:
+        rate_limited: requests.Response | None = None
+        try:
+            resp = session.get(url, params=params, headers=headers, timeout=TIMEOUT)
+        except (requests.Timeout, requests.ConnectionError) as e:
+            last_error: Exception = e
+        else:
+            if resp.status_code in (401, 403):
+                raise SessionExpired(f"HTTP {resp.status_code}")
+            if resp.status_code == 429 or resp.status_code >= 500:
+                last_error = requests.HTTPError(f"HTTP {resp.status_code}", response=resp)
+                if resp.status_code == 429:
+                    rate_limited = resp
+            else:
+                resp.raise_for_status()
+                try:
+                    return resp.json()
+                except ValueError as e:
+                    last_error = e
+
+        delay = next(delays, None)
+        if delay is None:
+            raise ConnectionFailed(str(last_error)) from last_error
+        _wait(_retry_after(rate_limited, delay) if rate_limited is not None else delay, stop)
 
 
 def friendly_error(e: Exception) -> str:
