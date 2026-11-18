@@ -5,11 +5,12 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+import urllib3
 
 from config import LOGIN_URL, CANHOTOS_URL, QUERY_HEADERS
 from utils.status import SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
 
-UPLOAD_TIMEOUT = 45
+UPLOAD_TIMEOUT = (5, 45)
 
 # (connect, read). The first request after opening the app is often slow (cold connection);
 # the retries in _get_json absorb that instead of a single very long timeout.
@@ -165,8 +166,14 @@ def upload_invoice(
     file_path: Path,
     full_data: dict,
     batch_date: str,
+    stop: threading.Event | None = None,
 ) -> tuple[bool, str | None]:
-    """POST invoice image upload. Returns (success, error_message)."""
+    """POST invoice image upload. Returns (success, error_message).
+
+    The portal refuses a second image for the same receipt, so the POST is only retried when the
+    connection was never made; anything else (read timeout, aborted connection) may already have
+    saved the image and fails right away.
+    """
     with open(file_path, "rb") as f:
         base64_img = base64.b64encode(f.read()).decode()
 
@@ -181,7 +188,28 @@ def upload_invoice(
         "validaDataEntrega": True,
     }
     headers = {**QUERY_HEADERS, "programa": "Canhoto"}
-    resp = session.post(f"{CANHOTOS_URL}/salvar", headers=headers, json=payload, timeout=UPLOAD_TIMEOUT)
+    delays = iter(RETRY_DELAYS)
+    while True:
+        try:
+            resp = session.post(f"{CANHOTOS_URL}/salvar", headers=headers, json=payload, timeout=UPLOAD_TIMEOUT)
+            break
+        except (requests.Timeout, requests.ConnectionError) as e:
+            delay = next(delays, None)
+            if not _is_connect_failure(e) or delay is None:
+                raise ConnectionFailed(str(e)) from e
+            _wait(delay, stop)
+
+    if resp.status_code in (401, 403):
+        raise SessionExpired(f"HTTP {resp.status_code}")
     if not resp.ok:
         return False, resp.text[:200]
     return True, None
+
+
+def _is_connect_failure(e: Exception) -> bool:
+    """True when the request certainly never reached the server (refused, DNS, connect timeout)."""
+    if isinstance(e, requests.ConnectTimeout):
+        return True
+    if isinstance(e, requests.ConnectionError) and e.args:
+        return isinstance(getattr(e.args[0], "reason", None), urllib3.exceptions.NewConnectionError)
+    return False

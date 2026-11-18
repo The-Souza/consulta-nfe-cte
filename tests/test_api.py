@@ -1,8 +1,11 @@
+import base64
+import json
 import threading
 
 import pytest
 import requests
 import responses
+import urllib3
 
 import api
 from utils.status import SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
@@ -258,6 +261,101 @@ def test_get_invoice_details_session_expired(session, waits, api_urls):
 
     with pytest.raises(api.SessionExpired):
         api.get_invoice_details(session, "abc")
+
+
+# upload_invoice -------------------------------------------------------------------
+
+SAVE_URL = f"{URL}/salvar"
+
+
+@pytest.fixture
+def image(tmp_path):
+    path = tmp_path / "10.jpg"
+    path.write_bytes(b"fake-image")
+    return path
+
+
+def _upload(session, image, delivery_date=None):
+    full_data = {"oid": "abc", "documentoIndustria": {"dataEntrega": delivery_date}}
+    return api.upload_invoice(session, "10", image, full_data, "2026-11-18T12:00:00.000Z")
+
+
+def _refused():
+    reason = urllib3.exceptions.NewConnectionError(None, "connection refused")
+    return requests.exceptions.ConnectionError(urllib3.exceptions.MaxRetryError(None, SAVE_URL, reason=reason))
+
+
+@responses.activate
+def test_upload_sends_image_and_keeps_the_system_date(session, waits, api_urls, image):
+    responses.post(SAVE_URL, json={})
+
+    assert _upload(session, image, delivery_date="2026-11-01T12:00:00.000Z") == (True, None)
+    body = json.loads(responses.calls[0].request.body)
+    assert body["base64"] == base64.b64encode(b"fake-image").decode()
+    assert body["nomeImagem"] == "10.jpeg"
+    assert body["documentoIndustria"]["dataEntrega"] == "2026-11-01T12:00:00.000Z"
+    assert responses.calls[0].request.headers["programa"] == "Canhoto"
+
+
+@responses.activate
+def test_upload_fills_the_date_only_when_empty(session, waits, api_urls, image):
+    responses.post(SAVE_URL, json={})
+
+    _upload(session, image)
+
+    body = json.loads(responses.calls[0].request.body)
+    assert body["documentoIndustria"]["dataEntrega"] == "2026-11-18T12:00:00.000Z"
+
+
+@responses.activate
+def test_upload_retries_when_the_connection_is_refused(session, waits, api_urls, image):
+    responses.post(SAVE_URL, body=_refused())
+    responses.post(SAVE_URL, json={})
+
+    assert _upload(session, image) == (True, None)
+    assert len(responses.calls) == 2
+    assert waits == [1]
+
+
+@responses.activate
+def test_upload_gives_up_after_connect_timeouts(session, waits, api_urls, image):
+    responses.post(SAVE_URL, body=requests.exceptions.ConnectTimeout())
+
+    with pytest.raises(api.ConnectionFailed):
+        _upload(session, image)
+    assert len(responses.calls) == 4
+    assert waits == [1, 2, 4]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [requests.exceptions.ReadTimeout(), requests.exceptions.ConnectionError("Connection aborted")],
+)
+@responses.activate
+def test_upload_does_not_retry_after_the_request_may_have_arrived(session, waits, api_urls, image, error):
+    responses.post(SAVE_URL, body=error)
+
+    with pytest.raises(api.ConnectionFailed):
+        _upload(session, image)
+    assert len(responses.calls) == 1
+    assert waits == []
+
+
+@pytest.mark.parametrize("status", [400, 500, 502])
+@responses.activate
+def test_upload_returns_server_message_without_retry(session, waits, api_urls, image, status):
+    responses.post(SAVE_URL, status=status, body="Canhoto já possui imagem")
+
+    assert _upload(session, image) == (False, "Canhoto já possui imagem")
+    assert len(responses.calls) == 1
+
+
+@responses.activate
+def test_upload_session_expired(session, waits, api_urls, image):
+    responses.post(SAVE_URL, status=403)
+
+    with pytest.raises(api.SessionExpired):
+        _upload(session, image)
 
 
 # _wait --------------------------------------------------------------------------
