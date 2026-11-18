@@ -358,6 +358,99 @@ def test_upload_session_expired(session, waits, api_urls, image):
         _upload(session, image)
 
 
+# call_with_relogin ----------------------------------------------------------------
+
+class _Calls:
+    """fn() that plays a scripted list of results; exceptions are raised."""
+
+    def __init__(self, *results):
+        self._results = list(results)
+        self.count = 0
+
+    def __call__(self):
+        self.count += 1
+        result = self._results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+def test_call_with_relogin_returns_without_relogin():
+    relogins = []
+
+    assert api.call_with_relogin(_Calls("ok"), lambda: relogins.append(1)) == "ok"
+    assert relogins == []
+
+
+def test_call_with_relogin_logs_in_again_and_repeats():
+    fn = _Calls(api.SessionExpired("401"), "ok")
+    relogins = []
+
+    assert api.call_with_relogin(fn, lambda: relogins.append(1)) == "ok"
+    assert relogins == [1]
+    assert fn.count == 2
+
+
+def test_call_with_relogin_failed_login_is_session_lost():
+    fn = _Calls(api.SessionExpired("401"))
+
+    def failing_login():
+        raise ValueError("E-mail ou senha inválidos.")
+
+    with pytest.raises(api.SessionLost):
+        api.call_with_relogin(fn, failing_login)
+    assert fn.count == 1
+
+
+def test_call_with_relogin_expired_again_is_session_lost():
+    fn = _Calls(api.SessionExpired("401"), api.SessionExpired("401"))
+    relogins = []
+
+    with pytest.raises(api.SessionLost):
+        api.call_with_relogin(fn, lambda: relogins.append(1))
+    assert relogins == [1]
+
+
+def test_call_with_relogin_keeps_other_errors():
+    with pytest.raises(api.ConnectionFailed):
+        api.call_with_relogin(_Calls(api.ConnectionFailed("down")), lambda: None)
+
+
+# warm_up --------------------------------------------------------------------------
+
+@responses.activate
+def test_warm_up_makes_one_light_call(session, waits, api_urls):
+    responses.get(URL, json={"data": []})
+
+    api.warm_up(session, 10)
+
+    assert len(responses.calls) == 1
+    assert responses.calls[0].request.params == {"limit": "1", "numero": "10", "offset": "0"}
+
+
+@pytest.mark.parametrize(
+    "body", [requests.exceptions.ConnectTimeout(), requests.exceptions.ConnectionError("reset")],
+)
+@responses.activate
+def test_warm_up_ignores_connection_errors(session, waits, api_urls, body):
+    responses.get(URL, body=body)
+
+    api.warm_up(session, 10)
+
+    assert len(responses.calls) == 1
+    assert waits == []
+
+
+@pytest.mark.parametrize("status", [401, 500])
+@responses.activate
+def test_warm_up_ignores_error_status(session, waits, api_urls, status):
+    responses.get(URL, status=status)
+
+    api.warm_up(session, 10)
+
+    assert len(responses.calls) == 1
+
+
 # friendly_error -------------------------------------------------------------------
 
 @pytest.mark.parametrize(
