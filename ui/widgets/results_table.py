@@ -26,7 +26,9 @@ def _scaled(widget, value: float) -> int:
     return round(value * ctk.ScalingTracker.get_widget_scaling(widget))
 
 
-def _configure_style(widget) -> None:
+def _configure_style(widget) -> tuple[tkinter.font.Font, ...]:
+    """Returns the fonts it created: the caller must keep them, or Python collects them, Tk deletes the
+    named fonts and the Treeview falls back to the default font."""
     style = ttk.Style(widget)
     style.theme_use("clam")  # the only built-in theme that honors these colors on Windows
     body = tkinter.font.Font(family=theme.FONT_FAMILY, size=-_scaled(widget, theme.FONT_SIZE_BODY))
@@ -44,6 +46,7 @@ def _configure_style(widget) -> None:
         borderwidth=0, font=heading, padding=(_scaled(widget, 8), _scaled(widget, 10)),
     )
     style.map(f"{_STYLE}.Heading", background=[("active", theme.SURFACE)])
+    return body, heading
 
 
 def _image_text(value) -> str:
@@ -63,7 +66,7 @@ class ResultsTable(ctk.CTkFrame):
 
     def __init__(self, parent):
         super().__init__(parent, fg_color=theme.SURFACE, corner_radius=0)
-        _configure_style(self)
+        self._fonts = _configure_style(self)
 
         self._tree = ttk.Treeview(
             self, columns=[c[0] for c in _COLUMNS], show="headings", style=_STYLE, selectmode="browse",
