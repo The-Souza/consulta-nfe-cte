@@ -4,7 +4,11 @@ Todas as mudanças relevantes do projeto ficam registradas aqui.
 
 O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/). As versões anteriores à 2.0.0 estão descritas nas [releases do GitHub](https://github.com/The-Souza/consulta-nfe-cte/releases).
 
-## [2.0.0-alpha.2] — em andamento
+## [2.0.0-alpha.2] — 2026-11-19
+
+### Adicionado
+- Consulta: painel "CT-es nesta consulta", com cada CT-e, a quantidade de NF-es e uma barra proporcional. Clicar num CT-e filtra a tabela ("Mostrando as N NF-es do CT-e X · Limpar filtro"); embaixo ficam as NF-es com e sem CT-e, e "sem CT-e" pode ser clicado.
+- Excel: aba "Resumo CT-e", com cada CT-e e a quantidade de NF-es.
 
 ### Alterado
 - Consulta: um campo único "NF-es" no lugar de "NF-e inicial" e "NF-e final". Aceita uma NF-e (`4516661`), uma faixa (`4516661-4516680`) ou uma lista separada por vírgula, espaço, `;` ou quebra de linha, como uma coluna colada do Excel. Repetidas são consultadas uma vez só.
@@ -18,6 +22,8 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ### Corrigido
 - Voltar da Consulta ou do Upload para o Início deixava a janela larga.
+- A Consulta e o Upload abrem dentro da área útil do monitor em que a janela está, sem passar da barra de tarefas em telas menores ou com zoom.
+- Consulta: os chips não piscam mais a cada NF-e nem se deslocam ao trocar o filtro.
 
 ## [2.0.0-alpha.1] — 2026-11-18
 
