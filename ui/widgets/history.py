@@ -4,6 +4,7 @@ import customtkinter as ctk
 
 from ui import theme
 from ui.icons import get_icon
+from ui.widgets.scrollbar import hide_frame_scrollbar_when_idle
 
 
 class HistoryPanel:
@@ -23,6 +24,7 @@ class HistoryPanel:
             parent, height=88, fg_color=theme.SURFACE, corner_radius=theme.RADIUS_INPUT,
             scrollbar_button_color=theme.SCROLLBAR_BUTTON, scrollbar_button_hover_color=theme.SCROLLBAR_BUTTON_HOVER,
         )
+        hide_frame_scrollbar_when_idle(self._scroll)
 
     def add(self, entry: dict) -> None:
         self._history.insert(0, entry)
