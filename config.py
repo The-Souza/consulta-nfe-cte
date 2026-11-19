@@ -23,3 +23,7 @@ APP_NAME     = os.getenv("APP_NAME", "consulta-nfe")
 APP_SUBTITLE = os.getenv("APP_SUBTITLE", "")
 ICON_FILE    = _base / os.getenv("ICON_FILE", "icon.ico")
 TESSERACT_PATH = os.getenv("TESSERACT_PATH", r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+
+# Read-only access to the drivers table; empty values turn the feature off
+SUPABASE_URL      = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
