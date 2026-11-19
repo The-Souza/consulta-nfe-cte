@@ -1,14 +1,17 @@
 import threading
+from datetime import date
 
 import pytest
 
 import api
+from drivers import Delivery, DriverLookup
 from ui.workers.search import BRAKE_SECONDS, SearchCallbacks, SearchWorker
 from utils.status import CONNECTION_FAILED, SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK, Tone, search_tone
 
 OK = ("123", SEARCH_OK, "Sim")
 NO_CTE = ("-", SEARCH_NO_CTE, "Não")
 NOT_FOUND = ("-", SEARCH_NOT_FOUND, "-")
+OFF = DriverLookup({}, None, "off")
 
 
 def failed():
@@ -33,18 +36,29 @@ class FakeInvoices:
 class Run:
     """Runs a SearchWorker synchronously (no thread, no Tk) and records what it reports."""
 
-    def __init__(self, script, *, relogin=lambda: None, stop=None, wait=None, warm_up=None):
+    def __init__(
+        self, script, *, relogin=lambda: None, stop=None, wait=None, warm_up=None,
+        drivers=None, lookup=OFF,
+    ):
         self.events: list[tuple] = []
         self.rows: list[dict] = []
         self.waits: list[float] = []
         self.warmed: list[int] = []
+        self.driver_reads: list[tuple[list[int], int]] = []  # invoices read, invoices queried before it
+        self.drivers_seen: list[DriverLookup] = []
         self.get_invoice = FakeInvoices(script)
+
+        def get_drivers(invoices):
+            self.driver_reads.append((list(invoices), len(self.get_invoice.calls)))
+            return lookup
+
         callbacks = SearchCallbacks(
             on_row=self._on_row,
             on_notice=lambda text: self.events.append(("notice", text)),
             on_done=lambda failures: self.events.append(("done", failures)),
             on_cancel=lambda: self.events.append(("cancel",)),
             on_session_lost=lambda: self.events.append(("lost",)),
+            on_drivers=self.drivers_seen.append,
         )
         SearchWorker(
             session=None,
@@ -57,6 +71,8 @@ class Run:
             warm_up=warm_up or (lambda session, n: self.warmed.append(n)),
             wait=wait or self.waits.append,
             pace=0,
+            drivers=drivers,
+            get_drivers=get_drivers,
         ).run()
 
     def _on_row(self, row, prog, current, total, elapsed):
@@ -116,7 +132,63 @@ def test_other_errors_show_the_message_and_are_not_retried():
 def test_row_keeps_cte_and_image():
     run = Run({1: [OK]})
 
-    assert run.rows[0] == {"NF-e": 1, "CT-e": "123", "Imagem": "Sim", "Status": SEARCH_OK}
+    assert run.rows[0] == {
+        "NF-e": 1, "CT-e": "123", "Imagem": "Sim", "Status": SEARCH_OK, "Motorista": "", "Entrega": None,
+    }
+
+
+# drivers --------------------------------------------------------------------------
+
+LOOKUP = DriverLookup({1: Delivery("Ana", date(2026, 11, 12)), 2: Delivery("Bia", None)}, None, "ok")
+
+
+def test_drivers_are_read_once_before_the_first_invoice():
+    run = Run({1: [OK], 2: [OK]}, lookup=LOOKUP)
+
+    assert run.driver_reads == [([1, 2], 0)]
+    assert run.drivers_seen == [LOOKUP]
+
+
+def test_rows_carry_driver_and_delivery_date():
+    run = Run({1: [OK], 2: [NO_CTE], 3: [NOT_FOUND]}, lookup=LOOKUP)
+
+    assert [(r["Motorista"], r["Entrega"]) for r in run.rows] == [
+        ("Ana", date(2026, 11, 12)), ("Bia", None), ("", None),
+    ]
+
+
+def test_connection_failure_rows_also_carry_the_driver():
+    run = Run({1: [failed(), failed()]}, lookup=LOOKUP)
+
+    assert all(r["Motorista"] == "Ana" for r in run.rows)
+
+
+def test_a_lookup_already_read_is_reused():
+    run = Run({1: [OK]}, drivers=LOOKUP)
+
+    assert run.driver_reads == []
+    assert run.drivers_seen == []
+    assert run.rows[0]["Motorista"] == "Ana"
+
+
+def test_failed_lookup_does_not_stop_the_search():
+    failed_lookup = DriverLookup({}, None, "failed")
+
+    run = Run({1: [OK]}, lookup=failed_lookup)
+
+    assert run.drivers_seen == [failed_lookup]
+    assert run.events == [("row", 1, SEARCH_OK), ("done", [])]
+    assert run.rows[0]["Motorista"] == ""
+
+
+def test_cancel_before_the_search_still_reports_the_lookup():
+    stop = threading.Event()
+    stop.set()
+
+    run = Run({1: [OK]}, stop=stop, lookup=LOOKUP)
+
+    assert run.drivers_seen == [LOOKUP]
+    assert run.events == [("cancel",)]
 
 
 # brake ----------------------------------------------------------------------------
@@ -207,3 +279,4 @@ def test_empty_list_finishes_without_calls(script):
 
     assert run.events == [("done", [])]
     assert run.warmed == []
+    assert run.driver_reads == []

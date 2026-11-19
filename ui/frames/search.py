@@ -4,6 +4,7 @@ from typing import Callable
 
 import customtkinter as ctk
 
+from drivers import DriverLookup
 from ui import theme
 from ui.icons import get_icon
 from ui.widgets.banner import Banner
@@ -46,6 +47,7 @@ class SearchFrame(ctk.CTkFrame):
         self._cte: str | None = None  # CT-e picked in the side panel; takes precedence over the chip
         self._multiplicity: dict[str, int] = {}
         self._current_entry: dict | None = None  # history entry of the results on screen
+        self._drivers: DriverLookup | None = None  # Supabase lookup of the results on screen
         self._searching  = False
         self._elapsed    = 0.0
         self._elapsed_before = 0.0
@@ -228,6 +230,7 @@ class SearchFrame(ctk.CTkFrame):
     def _reset_view(self) -> None:
         self._results = {}
         self._multiplicity = {}
+        self._drivers = None
         self._chip = "all"
         self._set_cte(None)
         self.chips.set_active("all")
@@ -320,13 +323,18 @@ class SearchFrame(ctk.CTkFrame):
                 on_done=finish(),
                 on_cancel=finish(cancelled=True),
                 on_session_lost=finish(session_lost=True),
+                on_drivers=self._set_drivers,
             ),
             relogin=self._relogin,
+            drivers=self._drivers if retry else None,
         )
         threading.Thread(target=worker.run, daemon=True).start()
 
     def _cancel(self) -> None:
         self._stop_event.set()
+
+    def _set_drivers(self, lookup: DriverLookup) -> None:
+        self._drivers = lookup
 
     def _add_row(self, r: dict, prog: float, current: int, total: int, elapsed: float) -> None:
         self.progressbar.set(prog)
@@ -432,11 +440,12 @@ class SearchFrame(ctk.CTkFrame):
         if update and self._current_entry is not None:
             entry = self._current_entry
             entry["results"] = self._rows()
+            entry["drivers"] = self._drivers
             entry["label"] = self._history_label(entry["hour"], entry["query"])
             self._hist.refresh()
             return
         hour = datetime.now().strftime("%H:%M")
-        entry = {"hour": hour, "query": query, "results": self._rows()}
+        entry = {"hour": hour, "query": query, "results": self._rows(), "drivers": self._drivers}
         entry["label"] = self._history_label(hour, query)
         self._current_entry = entry
         self._hist.add(entry)
@@ -452,6 +461,7 @@ class SearchFrame(ctk.CTkFrame):
         self._reset_view()
         self._results = {r["NF-e"]: r for r in entry["results"]}
         self._multiplicity = cte_multiplicity(self._rows())
+        self._drivers = entry["drivers"]
         self._current_entry = entry
         self._elapsed = 0.0  # the restored search's time isn't kept; a retry counts from zero
         self._render()

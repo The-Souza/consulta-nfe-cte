@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import Callable
 
 import api
+import drivers
+from drivers import DriverLookup
 from utils.status import CONNECTION_FAILED
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,7 @@ class SearchCallbacks:
     on_done: Callable[[list[int]], None]  # invoices that still failed by connection
     on_cancel: Callable[[], None]
     on_session_lost: Callable[[], None]
+    on_drivers: Callable[[DriverLookup], None]  # drivers read from Supabase, before the first invoice
 
 
 class SearchWorker:
@@ -40,6 +43,8 @@ class SearchWorker:
         warm_up: Callable = api.warm_up,
         wait: Callable[[float], None] | None = None,
         pace: float = PACE_SECONDS,
+        drivers: DriverLookup | None = None,  # already read: a retry doesn't read Supabase again
+        get_drivers: Callable[[list[int]], DriverLookup] = drivers.get_drivers,
     ):
         self._session     = session
         self._invoices    = invoices
@@ -51,6 +56,8 @@ class SearchWorker:
         self._warm_up     = warm_up
         self._wait        = wait or (lambda seconds: api._wait(seconds, stop_event))
         self._pace        = pace
+        self._drivers     = drivers
+        self._get_drivers = get_drivers
         self._t0          = 0.0
 
     def run(self) -> None:
@@ -66,6 +73,9 @@ class SearchWorker:
     def _search(self) -> list[int]:
         if not self._invoices:
             return []
+        if self._drivers is None:
+            self._drivers = self._get_drivers(self._invoices)
+            self._after(0, self._cb.on_drivers, self._drivers)
         try:
             self._warm_up(self._session, self._invoices[0])
         except Exception:
@@ -115,4 +125,10 @@ class SearchWorker:
             cte, status, has_image, connection_failed = "-", CONNECTION_FAILED, "-", True
         except Exception as e:
             cte, status, has_image, connection_failed = "-", api.friendly_error(e), "-", False
-        return {"NF-e": invoice_num, "CT-e": cte, "Imagem": has_image, "Status": status}, connection_failed
+        delivery = self._drivers.deliveries.get(invoice_num) if self._drivers else None
+        row = {
+            "NF-e": invoice_num, "CT-e": cte, "Imagem": has_image, "Status": status,
+            "Motorista": delivery.driver if delivery else "",
+            "Entrega": delivery.date if delivery else None,
+        }
+        return row, connection_failed
