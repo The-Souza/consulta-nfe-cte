@@ -72,6 +72,14 @@ Copie `.env.example` para `.env` e preencha os valores:
 | `APP_SUBTITLE`   | Subtítulo exibido na tela de login                                                              |
 | `ICON_FILE`      | Nome do arquivo de ícone (ex: `icon.ico`)                                                       |
 | `TESSERACT_PATH` | Caminho para o executável do Tesseract (padrão: `C:\Program Files\Tesseract-OCR\tesseract.exe`) |
+| `SUPABASE_URL`   | URL do projeto Supabase com a tabela de motoristas (opcional)                                   |
+| `SUPABASE_ANON_KEY` | Chave publishable do projeto (`sb_publishable_...`), só leitura (opcional)                   |
+
+### Motorista e data de entrega (opcional)
+
+A Consulta mostra o motorista e a data de entrega de cada NF-e lendo a tabela `entregas` de um projeto Supabase. Para criar a tabela, rode `supabase/001_entregas.sql` no SQL Editor do projeto: ele liga o RLS e deixa a chave publishable só com leitura.
+
+Sem `SUPABASE_URL` e `SUPABASE_ANON_KEY`, ou se o Supabase estiver fora do ar, a consulta funciona normalmente e as colunas de motorista mostram "—". Use apenas a chave publishable: a secret key ignora o RLS e nunca deve ir para o `.env`.
 
 ## Gerando o executável
 
@@ -135,6 +143,7 @@ consulta-nfe-cte/
 │       └── upload.py   # Thread de upload de canhotos
 ├── utils/
 │   └── excel.py        # Exportação para Excel
+├── supabase/           # SQL da tabela de motoristas (entregas)
 ├── tests/              # Testes (pytest)
 ├── .env.example        # Modelo de variáveis de ambiente
 ├── pyproject.toml      # Configuração do ruff e do pytest

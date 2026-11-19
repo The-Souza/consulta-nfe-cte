@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import Callable
 
 import api
+import drivers
+from drivers import DriverLookup
 from utils.status import CONNECTION_FAILED
 
 logger = logging.getLogger(__name__)
@@ -12,6 +14,7 @@ logger = logging.getLogger(__name__)
 BRAKE_AFTER = 3      # connection failures in a row before pausing
 BRAKE_SECONDS = 10
 PACE_SECONDS = 0.05  # gap between invoices, to not hammer the server
+CANCEL_POLL_SECONDS = 0.1  # how often a Supabase read checks Cancelar
 
 
 @dataclass
@@ -21,6 +24,7 @@ class SearchCallbacks:
     on_done: Callable[[list[int]], None]  # invoices that still failed by connection
     on_cancel: Callable[[], None]
     on_session_lost: Callable[[], None]
+    on_drivers: Callable[[DriverLookup], None]  # before the first invoice, and again if the CT-e found more
 
 
 class SearchWorker:
@@ -40,6 +44,9 @@ class SearchWorker:
         warm_up: Callable = api.warm_up,
         wait: Callable[[float], None] | None = None,
         pace: float = PACE_SECONDS,
+        drivers: DriverLookup | None = None,  # already read: a retry doesn't read Supabase again
+        get_drivers: Callable[[list[int]], DriverLookup] = drivers.get_drivers,
+        get_drivers_by_cte: Callable[[set[int]], DriverLookup] = drivers.get_drivers_by_cte,
     ):
         self._session     = session
         self._invoices    = invoices
@@ -51,6 +58,10 @@ class SearchWorker:
         self._warm_up     = warm_up
         self._wait        = wait or (lambda seconds: api._wait(seconds, stop_event))
         self._pace        = pace
+        self._drivers     = drivers
+        self._get_drivers = get_drivers
+        self._get_drivers_by_cte = get_drivers_by_cte
+        self._rows: dict[int, dict] = {}  # latest row of each invoice of this run
         self._t0          = 0.0
 
     def run(self) -> None:
@@ -66,6 +77,9 @@ class SearchWorker:
     def _search(self) -> list[int]:
         if not self._invoices:
             return []
+        if self._drivers is None or self._drivers.state == "failed":  # a retry may find Supabase back
+            self._drivers = self._cancellable(lambda: self._get_drivers(self._invoices))
+            self._after(0, self._cb.on_drivers, self._drivers)
         try:
             self._warm_up(self._session, self._invoices[0])
         except Exception:
@@ -76,7 +90,56 @@ class SearchWorker:
         if failures:
             self._after(0, self._cb.on_notice, f"Tentando de novo {len(failures)} NF-e(s) com falha de conexão…")
             failures = self._pass(failures)
+        self._fill_drivers_by_cte()
         return failures
+
+    def _fill_drivers_by_cte(self) -> None:
+        """A load issued with a single XML has no invoices in the sheet, only its CT-e: rows still without
+        a driver get the driver and date of their CT-e."""
+        if self._drivers is None or self._drivers.state != "ok":
+            return
+        pending = [r for r in self._rows.values() if not r["Motorista"] and r["CT-e"].isdigit()]
+        if not pending:
+            return
+        if self._stop.is_set():
+            raise api.Cancelled()
+        ctes = {int(r["CT-e"]) for r in pending}
+        by_cte = self._cancellable(lambda: self._get_drivers_by_cte(ctes)).deliveries
+        found: dict = {}
+        total = len(self._invoices)
+        for row in pending:
+            delivery = by_cte.get(int(row["CT-e"]))
+            if delivery is None:
+                continue
+            found[row["NF-e"]] = delivery
+            updated = {**row, "Motorista": delivery.driver, "Entrega": delivery.date}
+            self._after(0, self._cb.on_row, updated, 1.0, total, total, time.time() - self._t0)
+        if found:
+            self._drivers = DriverLookup(
+                {**self._drivers.deliveries, **found}, self._drivers.updated_at, self._drivers.state,
+            )
+            self._after(0, self._cb.on_drivers, self._drivers)
+
+    def _cancellable(self, read: Callable[[], DriverLookup]) -> DriverLookup:
+        """Runs a Supabase read on its own thread so Cancelar answers at once, even while a request
+        waits for its timeout. A cancelled read is abandoned; its result is ignored."""
+        result: list[DriverLookup] = []
+
+        def target() -> None:
+            try:
+                result.append(read())
+            except Exception:  # never leave the search without an answer
+                logger.warning("Unexpected error reading drivers", exc_info=True)
+                result.append(DriverLookup({}, None, "failed"))
+
+        thread = threading.Thread(target=target, daemon=True)
+        thread.start()
+        while True:
+            thread.join(CANCEL_POLL_SECONDS)
+            if not thread.is_alive():
+                return result[0]
+            if self._stop.is_set():
+                raise api.Cancelled()
 
     def _pass(self, invoices: list[int]) -> list[int]:
         failures: list[int] = []
@@ -87,6 +150,7 @@ class SearchWorker:
                 raise api.Cancelled()
 
             row, connection_failed = self._query(invoice_num)
+            self._rows[invoice_num] = row
             self._after(0, self._cb.on_row, row, (i + 1) / total, i + 1, total, time.time() - self._t0)
 
             if connection_failed:
@@ -115,4 +179,10 @@ class SearchWorker:
             cte, status, has_image, connection_failed = "-", CONNECTION_FAILED, "-", True
         except Exception as e:
             cte, status, has_image, connection_failed = "-", api.friendly_error(e), "-", False
-        return {"NF-e": invoice_num, "CT-e": cte, "Imagem": has_image, "Status": status}, connection_failed
+        delivery = self._drivers.deliveries.get(invoice_num) if self._drivers else None
+        row = {
+            "NF-e": invoice_num, "CT-e": cte, "Imagem": has_image, "Status": status,
+            "Motorista": delivery.driver if delivery else "",
+            "Entrega": delivery.date if delivery else None,
+        }
+        return row, connection_failed

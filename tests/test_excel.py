@@ -1,11 +1,13 @@
+from datetime import date
+
 import pandas as pd
 import pytest
 
 from utils.excel import build_rows, cte_summary, export_excel
 
 
-def _result(status="OK", image="Sim", cte="12345"):
-    return {"NF-e": 100, "CT-e": cte, "Imagem": image, "Status": status}
+def _result(status="OK", image="Sim", cte="12345", driver="Ana", delivered=date(2026, 11, 12)):
+    return {"NF-e": 100, "CT-e": cte, "Imagem": image, "Status": status, "Motorista": driver, "Entrega": delivered}
 
 
 @pytest.mark.parametrize("status", ["OK", "Sem CT-e", "Não cadastrada", "Tempo de conexão esgotado."])
@@ -19,7 +21,7 @@ def test_build_rows_formats_image(image, expected):
 
 
 def test_build_rows_without_image_key():
-    row = {"NF-e": 100, "CT-e": "-", "Status": "Não cadastrada"}
+    row = {"NF-e": 100, "CT-e": "-", "Status": "Não cadastrada", "Motorista": "", "Entrega": None}
 
     assert build_rows([row])[0]["Imagem"] == "-"
 
@@ -28,16 +30,27 @@ def test_build_rows_keeps_column_order_and_values():
     rows = build_rows([_result(), _result(status="Sem CT-e", cte="-")])
 
     assert rows == [
-        {"NF-e": 100, "CT-e": "12345", "Imagem": "Sim", "Status": "OK"},
-        {"NF-e": 100, "CT-e": "-", "Imagem": "Sim", "Status": "Sem CT-e"},
+        {"NF-e": 100, "CT-e": "12345", "Imagem": "Sim", "Motorista": "Ana", "Entrega": "12/11/2026", "Status": "OK"},
+        {"NF-e": 100, "CT-e": "-", "Imagem": "Sim", "Motorista": "Ana", "Entrega": "12/11/2026", "Status": "Sem CT-e"},
     ]
-    assert list(rows[0]) == ["NF-e", "CT-e", "Imagem", "Status"]
+    assert list(rows[0]) == ["NF-e", "CT-e", "Imagem", "Motorista", "Entrega", "Status"]
+
+
+def test_build_rows_without_driver_leaves_driver_and_date_empty():
+    row = build_rows([_result(driver="", delivered=None)])[0]
+
+    assert (row["Motorista"], row["Entrega"]) == ("", "")
+
+
+def test_build_rows_with_driver_but_no_date():
+    assert build_rows([_result(delivered=None)])[0]["Entrega"] == ""
 
 
 # cte summary ------------------------------------------------------------------------
 
 def _invoice(nfe, cte):
-    return {"NF-e": nfe, "CT-e": cte, "Imagem": "Sim", "Status": "OK" if cte != "-" else "Sem CT-e"}
+    status = "OK" if cte != "-" else "Sem CT-e"
+    return {"NF-e": nfe, "CT-e": cte, "Imagem": "Sim", "Status": status, "Motorista": "", "Entrega": None}
 
 
 RESULTS = [_invoice(1, "25540"), _invoice(2, "5533"), _invoice(3, "25540"), _invoice(4, "-"), _invoice(5, "25540")]
@@ -62,7 +75,7 @@ def test_export_writes_query_and_cte_summary_sheets(tmp_path, monkeypatch):
     sheets = pd.read_excel(tmp_path / filename, sheet_name=None, dtype=str)
     assert list(sheets) == ["Consulta", "Resumo CT-e"]
     assert sheets["Consulta"]["NF-e"].tolist() == ["1", "2", "3", "4", "5"]
-    assert list(sheets["Consulta"].columns) == ["NF-e", "CT-e", "Imagem", "Status"]
+    assert list(sheets["Consulta"].columns) == ["NF-e", "CT-e", "Imagem", "Motorista", "Entrega", "Status"]
     assert sheets["Resumo CT-e"].values.tolist() == [["25540", "3"], ["5533", "1"]]
 
 
