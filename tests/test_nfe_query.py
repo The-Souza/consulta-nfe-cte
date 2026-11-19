@@ -2,7 +2,7 @@ import time
 
 import pytest
 
-from utils.nfe_query import CONFIRM_ABOVE, MAX_INVOICES, parse_query
+from utils.nfe_query import MAX_INVOICES, parse_query
 
 INVALID = "Formato não reconhecido"
 
@@ -71,10 +71,6 @@ def test_leading_zeros_are_ignored():
     assert parse_query("00123").invoices == [123]
 
 
-def test_large_counts_use_thousands_separator():
-    assert parse_query("1-1200").label == "Faixa · 1.200 NF-es"
-
-
 # empty and invalid ------------------------------------------------------------------
 
 @pytest.mark.parametrize("text", ["", "   ", "\n", ", ;"])
@@ -97,23 +93,31 @@ def test_invalid_format(text):
 
 # limits -----------------------------------------------------------------------------
 
-def test_limits():
-    assert (CONFIRM_ABOVE, MAX_INVOICES) == (500, 5000)
+def test_limit():
+    # A real query stays around 60 NF-es and never goes past 100 on purpose
+    assert MAX_INVOICES == 200
 
 
 def test_maximum_is_accepted():
-    parsed = parse_query("1-5000")
+    parsed = parse_query("1-200")
 
     assert parsed.valid
-    assert len(parsed.invoices) == 5000
+    assert len(parsed.invoices) == 200
 
 
 def test_above_maximum_is_refused():
-    parsed = parse_query("1-5000, 9000")
+    parsed = parse_query("1-200, 9000")
 
     assert not parsed.valid
     assert parsed.invoices == []
-    assert parsed.label == "Máximo de 5.000 NF-es por consulta"
+    assert parsed.label == "Máximo de 200 NF-es por consulta"
+
+
+def test_repeated_numbers_count_once_toward_the_limit():
+    parsed = parse_query("1-200, 5, 200")
+
+    assert parsed.valid
+    assert len(parsed.invoices) == 200
 
 
 def test_huge_range_is_refused_without_building_the_list():

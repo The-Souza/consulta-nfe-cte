@@ -17,7 +17,7 @@ from ui.widgets.results_table import ResultsTable
 from ui.widgets.topbar import make_topbar
 from ui.workers.search import SearchCallbacks, SearchWorker
 from utils.excel import export_excel
-from utils.nfe_query import CONFIRM_ABOVE, parse_query
+from utils.nfe_query import parse_query
 from utils.search_results import chip_counts, cte_counts, cte_multiplicity, status_text, visible_rows
 from utils.status import CONNECTION_FAILED, Tone
 
@@ -128,8 +128,6 @@ class SearchFrame(ctk.CTkFrame):
         card.pack(side="left", fill="both", expand=True)
         inner = ctk.CTkFrame(card, fg_color=theme.SURFACE, corner_radius=0)
         inner.pack(fill="both", expand=True, padx=1, pady=theme.SPACE_SM)
-        self._confirm = Banner(inner, theme.SURFACE)
-        self._confirm.pack(fill="x")
         self._conn_banner = Banner(inner, theme.SURFACE)
         self._conn_banner.pack(fill="x")
         self._retry_banner = Banner(inner, theme.SURFACE)
@@ -261,7 +259,6 @@ class SearchFrame(ctk.CTkFrame):
         parsed = parse_query(text)
         color = theme.STATUS[Tone.ERROR.value][0] if parsed.label and not parsed.valid else theme.TEXT_MUTED
         self.lbl_parse.configure(text=parsed.label, text_color=color)
-        self._confirm.hide()  # a pending confirmation was for the old text
 
     def _start_search(self) -> None:
         if self._searching:
@@ -272,20 +269,9 @@ class SearchFrame(ctk.CTkFrame):
         if not parsed.valid:
             self.entry_query.focus()
             return
-        if len(parsed.invoices) > CONFIRM_ABOVE:
-            self._confirm.show(
-                Tone.INFO, f"Consultar {parsed.label.split(' · ')[-1]}? Pode levar alguns minutos.",
-                [("Consultar", lambda: self._begin_search(query, parsed.invoices)), ("Cancelar", self._confirm.hide)],
-            )
-            return
-        self._begin_search(query, parsed.invoices)
-
-    def _begin_search(self, query: str, invoices: list[int]) -> None:
-        if self._searching:  # "Consultar" on the banner while a retry is already running
-            return
         self._current_entry = None
         self._reset_view()
-        self._run(invoices, query, retry=False)
+        self._run(parsed.invoices, query, retry=False)
 
     def _retry_failures(self) -> None:
         if self._searching or self._current_entry is None:
@@ -299,7 +285,6 @@ class SearchFrame(ctk.CTkFrame):
             self._run(failures, self._current_entry["query"], retry=True)
 
     def _run(self, invoices: list[int], query: str, retry: bool) -> None:
-        self._confirm.hide()
         self._elapsed_before = self._elapsed if retry else 0.0  # a retry adds to the search time
         self._searching = True
         self._stop_event.clear()
@@ -408,7 +393,6 @@ class SearchFrame(ctk.CTkFrame):
     def _clear(self) -> None:
         self.entry_query.delete(0, "end")
         self._on_query_change()
-        self._confirm.hide()
         self._current_entry = None
         self._reset_view()
         set_message(self.lbl_progress, "")
@@ -456,7 +440,6 @@ class SearchFrame(ctk.CTkFrame):
         self.entry_query.delete(0, "end")
         self.entry_query.insert(0, entry["query"])
         self._on_query_change()
-        self._confirm.hide()
 
         self._reset_view()
         self._results = {r["NF-e"]: r for r in entry["results"]}
