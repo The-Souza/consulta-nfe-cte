@@ -4,6 +4,7 @@ from tkinter import ttk
 import customtkinter as ctk
 
 from ui import theme
+from ui.widgets.scrollbar import hide_when_idle
 from utils.status import Tone, search_tone
 
 _STYLE = "Canhotos.Treeview"
@@ -87,7 +88,7 @@ class ResultsTable(ctk.CTkFrame):
             self, command=self._tree.yview, width=theme.SCROLLBAR_WIDTH, fg_color=theme.TRANSPARENT,
             button_color=theme.SCROLLBAR_BUTTON, button_hover_color=theme.SCROLLBAR_BUTTON_HOVER,
         )
-        self._tree.configure(yscrollcommand=scrollbar.set)
+        self._tree.configure(yscrollcommand=hide_when_idle(scrollbar))
         heading_height = self._fonts[1].metrics("linespace") + 2 * _scaled(self, _HEADING_PAD_Y)
         # The scrollbar starts below the headings: it scrolls the rows only and doesn't cut the line.
         # heading_height is in physical px, but a CTk widget's pack() scales pady by the zoom again.

@@ -11,6 +11,7 @@ from ui.widgets.buttons import restore_button, show_cancel
 from ui.widgets.chip import make_chip
 from ui.widgets.history import HistoryPanel
 from ui.widgets.progress import make_progress, set_message
+from ui.widgets.scrollbar import hide_frame_scrollbar_when_idle
 from ui.widgets.table import make_header, insert_row, clear_scroll
 from ui.widgets.topbar import make_topbar
 from ui.workers.rename import RenameWorker
@@ -86,6 +87,7 @@ class UploadFrame(ctk.CTkFrame):
         self.hdr_upload = make_header(hdr_slot, _COLS_U)
         self.scroll = ctk.CTkScrollableFrame(main)
         self.scroll.pack(fill="both", expand=True, pady=(2, 6))
+        hide_frame_scrollbar_when_idle(self.scroll)
         self._row_count = 0
 
     def _build_footer(self, main: ctk.CTkFrame) -> None:

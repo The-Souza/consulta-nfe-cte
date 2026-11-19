@@ -4,6 +4,7 @@ from typing import Callable
 import customtkinter as ctk
 
 from ui import theme
+from ui.widgets.scrollbar import hide_frame_scrollbar_when_idle
 from utils.status import Tone
 
 MAX_ITEMS = 50  # a query can have thousands of CT-es; the panel shows the largest ones
@@ -85,6 +86,7 @@ class CtePanel(ctk.CTkFrame):
             scrollbar_button_hover_color=theme.SCROLLBAR_BUTTON_HOVER,
         )
         self._list.pack(fill="both", expand=True, padx=theme.SPACE_XS, pady=theme.SPACE_XS)
+        hide_frame_scrollbar_when_idle(self._list)
         self._more = ctk.CTkLabel(self._list, text="", text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM))
         self._empty = ctk.CTkLabel(self._list, text="Nenhum CT-e nesta consulta.", text_color=theme.TEXT_MUTED,
                                    font=theme.font(theme.FONT_SIZE_SM))
