@@ -19,14 +19,17 @@ def hide_when_idle(
 ) -> Callable[[str, str], None]:
     """A yscrollcommand for the scrolled widget. The colors change only when the state flips,
     because configure() redraws the whole scrollbar."""
-    shown: list[bool] = []
+    shown: bool | None = None
 
     def command(first: str, last: str) -> None:
+        nonlocal shown
         scrollbar.set(first, last)
-        show = needs_scroll(first, last)
-        if shown and shown[0] == show:
+        # set() redraws and processes pending Tk events, which can call this command again with a
+        # newer position: decide by the position the scrollbar ended up with, not by these arguments.
+        show = needs_scroll(*scrollbar.get())
+        if show == shown:
             return
-        shown[:] = [show]
+        shown = show
         if show:
             scrollbar.configure(button_color=button_color, button_hover_color=hover_color)
         else:
