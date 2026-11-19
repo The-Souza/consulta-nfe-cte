@@ -13,7 +13,14 @@ def format_image(value) -> str:
 
 def build_rows(results: list[dict]) -> list[dict]:
     return [
-        {"NF-e": r["NF-e"], "CT-e": r["CT-e"], "Imagem": format_image(r.get("Imagem")), "Status": r["Status"]}
+        {
+            "NF-e": r["NF-e"],
+            "CT-e": r["CT-e"],
+            "Imagem": format_image(r.get("Imagem")),
+            "Motorista": r["Motorista"],
+            "Entrega": r["Entrega"].strftime("%d/%m/%Y") if r["Entrega"] else "",
+            "Status": r["Status"],
+        }
         for r in results
     ]
 
