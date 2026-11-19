@@ -11,6 +11,13 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 - Consulta: acima do campo aparece como o app entendeu o texto ("1 NF-e", "Faixa · 20 NF-es", "Lista · 3 NF-es" ou "Formato não reconhecido"). Enter busca.
 - Consulta: acima de 500 NF-es, o app pede confirmação antes de buscar; o limite é de 5.000 NF-es por consulta.
 - Histórico da consulta: guarda o texto do campo e o devolve ao restaurar.
+- Consulta com o novo visual: a tabela fica leve mesmo com centenas de NF-es e ganha as colunas Motorista e Entrega (com "—" até a próxima etapa). O CT-e mostra "×N" quando se repete na consulta, e a linha inteira fica na cor do status quando não é OK.
+- Consulta: os chips viram filtros (Todos, Com CT-e, Sem CT-e, Não cadastrada, Sem imagem, Falha de conexão), cada um com a contagem; o menu "Filtrar" saiu.
+- Consulta: as falhas de conexão aparecem numa faixa no topo da tabela com o botão "Tentar de novo só essas N".
+- Consulta: no fim, o status mostra o total, as falhas e o tempo ("Consulta concluída · 20 NF-es · 2 com falha · 00:41"). A janela abre maior.
+
+### Corrigido
+- Voltar da Consulta ou do Upload para o Início deixava a janela larga.
 
 ## [2.0.0-alpha.1] — 2026-11-18
 

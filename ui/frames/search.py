@@ -5,46 +5,48 @@ from typing import Callable
 import customtkinter as ctk
 
 from ui import theme
+from ui.icons import get_icon
 from ui.widgets.banner import Banner
 from ui.widgets.buttons import restore_button, show_cancel
-from ui.widgets.chip import make_chip
-from ui.widgets.dropdown import FilterDropdown
+from ui.widgets.filter_chips import FilterChips
 from ui.widgets.history import HistoryPanel
 from ui.widgets.progress import set_message
-from ui.widgets.table import make_header, insert_row, clear_scroll
+from ui.widgets.results_table import ResultsTable
 from ui.widgets.topbar import make_topbar
 from ui.workers.search import SearchCallbacks, SearchWorker
-from utils.excel import export_excel, format_image
+from utils.excel import export_excel
 from utils.nfe_query import CONFIRM_ABOVE, parse_query
-from utils.status import CONNECTION_FAILED, SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK, Tone, search_tone
+from utils.search_results import chip_counts, cte_multiplicity, status_text, visible_rows
+from utils.status import CONNECTION_FAILED, Tone
 
-_COLS = [("Nº", 50), ("NF-e", 80), ("CT-e", 100), ("Imagem", 80), ("Status", 160)]
 _HISTORY_QUERY_CHARS = 40
+_EMPTY_FILTER = "Nenhuma NF-e neste filtro."
 
-_FILTERS: dict[str, Callable[[dict], bool]] = {
-    "Todos":            lambda r: True,
-    "Sem imagem":       lambda r: r.get("Imagem") == "Não",
-    "Com imagem":       lambda r: r.get("Imagem") == "Sim",
-    "Sem CT-e":         lambda r: r["Status"] == SEARCH_NO_CTE,
-    "Não cadastrada":   lambda r: r["Status"] == SEARCH_NOT_FOUND,
-    "Com CT-e (OK)":    lambda r: r["Status"] == SEARCH_OK,
-    "Falha de conexão": lambda r: r["Status"] == CONNECTION_FAILED,
-}
+
+def _primary_button(parent, text: str, icon: str, command: Callable, **options) -> ctk.CTkButton:
+    return ctk.CTkButton(
+        parent, text=text, image=get_icon(icon, 16, theme.TEXT_ON_PRIMARY), compound="left", height=38,
+        corner_radius=theme.RADIUS_INPUT, fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER,
+        text_color=theme.TEXT_ON_PRIMARY, font=theme.font(theme.FONT_SIZE_INPUT, "bold"), command=command,
+        **options,
+    )
 
 
 class SearchFrame(ctk.CTkFrame):
     def __init__(self, parent, session, user_name, on_logout, on_back=None, relogin: Callable[[], None] | None = None):
-        super().__init__(parent, fg_color="transparent")
-        self._session      = session
-        self._relogin      = relogin
-        self._on_logout    = on_logout
+        super().__init__(parent, fg_color=theme.BG, corner_radius=0)
+        self._session    = session
+        self._relogin    = relogin
+        self._on_logout  = on_logout
         self._on_back    = on_back
         self._results: dict[int, dict] = {}  # NF-e -> row, in query order
-        self._row_widgets: dict[int, tuple] = {}  # NF-e -> (row frame, row number) of the rows on screen
+        self._chip = "all"
+        self._multiplicity: dict[str, int] = {}
         self._current_entry: dict | None = None  # history entry of the results on screen
         self._searching  = False
+        self._elapsed    = 0.0
+        self._elapsed_before = 0.0
         self._stop_event = threading.Event()
-        self._row_count    = 0
         self._btn_search_style: dict = {}
         self._last_query: str | None = None  # field text the parse label was computed for
         self._build(user_name)
@@ -56,21 +58,21 @@ class SearchFrame(ctk.CTkFrame):
     def _build(self, user_name: str) -> None:
         make_topbar(self, "Consulta NF-e / CT-e", user_name, self._logout,
                     on_back=self._back if self._on_back else None)
-        main = ctk.CTkFrame(self, fg_color="transparent")
-        main.pack(fill="both", expand=True, padx=16, pady=12)
-        self._build_inputs(main)
-        self._build_progress_row(main)
-        self._build_table(main)
-        self._build_footer(main)
-        self._build_history(main)
+        main = ctk.CTkFrame(self, fg_color=theme.TRANSPARENT)
+        main.pack(fill="both", expand=True, padx=20, pady=(theme.SPACE_LG, 14))
+        self._build_search_row(main)
+        self.chips = FilterChips(main, on_pick=self._on_chip)
+        self.chips.pack(fill="x", pady=(theme.SPACE_MD, 0))
+        self._build_footer(main)  # packed before the card so the card takes the remaining height
+        self._build_card(main)
 
-    def _build_inputs(self, main: ctk.CTkFrame) -> None:
-        row = ctk.CTkFrame(main, fg_color="transparent")
-        row.pack(fill="x", pady=(0, 4))
+    def _build_search_row(self, main: ctk.CTkFrame) -> None:
+        row = ctk.CTkFrame(main, fg_color=theme.TRANSPARENT)
+        row.pack(fill="x")
 
-        field = ctk.CTkFrame(row, fg_color="transparent")
-        field.pack(side="left", padx=(0, 12))
-        labels = ctk.CTkFrame(field, fg_color="transparent")
+        field = ctk.CTkFrame(row, fg_color=theme.TRANSPARENT)
+        field.pack(side="left", padx=(0, theme.SPACE_MD))
+        labels = ctk.CTkFrame(field, fg_color=theme.TRANSPARENT)
         labels.pack(fill="x")
         ctk.CTkLabel(
             labels, text="NF-es", text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM), height=18,
@@ -85,78 +87,57 @@ class SearchFrame(ctk.CTkFrame):
             font=theme.font(theme.FONT_SIZE_INPUT, mono=True),
         )
         self.entry_query.pack(pady=(theme.SPACE_XS, 0))
-
-        self.btn_search = ctk.CTkButton(row, text="Buscar", width=100, height=38, command=self._start_search)
-        self.btn_search.pack(side="left", padx=(0, 6), anchor="s")
-
-        self.btn_clear = ctk.CTkButton(
-            row, text="Limpar", width=100, height=38,
-            fg_color="transparent", hover_color=theme.SURFACE_2,
-            border_width=1, border_color=theme.BORDER_INPUT,
-            command=self._clear,
-        )
-        self.btn_clear.pack(side="left", anchor="s")
-
-        # Shown only when the results have connection failures.
-        text_color, bg_color = theme.STATUS[Tone.CONNECTION.value]
-        self.btn_retry = ctk.CTkButton(
-            row, text="", fg_color=bg_color, hover_color=theme.SURFACE_2, text_color=text_color,
-            command=self._retry_failures,
-        )
-
         self.entry_query.bind("<Return>", lambda e: self._start_search())
         self.entry_query.bind("<KeyRelease>", self._on_query_change)
 
-    def _build_progress_row(self, main: ctk.CTkFrame) -> None:
-        row = ctk.CTkFrame(main, fg_color="transparent")
-        row.pack(fill="x", pady=(4, 8))
-
-        self.lbl_progress = ctk.CTkLabel(row, text="", anchor="w", text_color=theme.TEXT)
-        self.lbl_progress.pack(side="left", fill="x", expand=True)
-
-        ctk.CTkLabel(row, text="Filtrar:").pack(side="left", padx=(8, 4))
-        self.option_filter = FilterDropdown(
-            row, options=list(_FILTERS.keys()), command=self._on_filter_change, width=160,
+        self.btn_search = _primary_button(row, "Buscar", "search", self._start_search, width=110)
+        self.btn_search.pack(side="left", padx=(0, theme.SPACE_SM), anchor="s")
+        self.btn_clear = ctk.CTkButton(
+            row, text="Limpar", width=90, height=38, corner_radius=theme.RADIUS_INPUT,
+            fg_color=theme.TRANSPARENT, hover_color=theme.SURFACE_2, border_width=1, border_color=theme.BORDER_INPUT,
+            text_color=theme.TEXT, font=theme.font(theme.FONT_SIZE_INPUT), command=self._clear,
         )
-        self.option_filter.pack(side="left")
+        self.btn_clear.pack(side="left", anchor="s")
 
-        self.progressbar = ctk.CTkProgressBar(main)
-        self.progressbar.pack(fill="x", pady=(0, 10))
+        status = ctk.CTkFrame(row, fg_color=theme.TRANSPARENT, width=360)
+        status.pack(side="right", anchor="s", pady=(0, theme.SPACE_XS))
+        self.lbl_progress = ctk.CTkLabel(
+            status, text="", anchor="e", text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_BODY),
+        )
+        self.lbl_progress.pack(fill="x")
+        self.progressbar = ctk.CTkProgressBar(
+            status, width=360, height=4, corner_radius=2, fg_color=theme.TOPBAR_BORDER, progress_color=theme.PROGRESS,
+        )
+        self.progressbar.pack(pady=(theme.SPACE_XS, 0))
         self.progressbar.set(0)
 
-    def _build_table(self, main: ctk.CTkFrame) -> None:
-        self._confirm = Banner(main, theme.BG)
-        self._confirm.pack(fill="x", pady=(0, 6))
-        make_header(main, _COLS).pack(fill="x")
-        self.scroll = ctk.CTkScrollableFrame(main)
-        self.scroll.pack(fill="both", expand=True, pady=(2, 6))
+    def _build_card(self, main: ctk.CTkFrame) -> None:
+        card = ctk.CTkFrame(
+            main, fg_color=theme.SURFACE, border_color=theme.BORDER, border_width=1, corner_radius=theme.RADIUS_CARD,
+        )
+        card.pack(fill="both", expand=True, pady=(theme.SPACE_MD, theme.SPACE_MD))
+        inner = ctk.CTkFrame(card, fg_color=theme.SURFACE, corner_radius=0)
+        inner.pack(fill="both", expand=True, padx=1, pady=theme.SPACE_SM)
+        self._confirm = Banner(inner, theme.SURFACE)
+        self._confirm.pack(fill="x")
+        self._conn_banner = Banner(inner, theme.SURFACE)
+        self._conn_banner.pack(fill="x")
+        self._retry_banner = Banner(inner, theme.SURFACE)
+        self._retry_banner.pack(fill="x")
+        self.table = ResultsTable(inner)
+        self.table.pack(fill="both", expand=True)
 
     def _build_footer(self, main: ctk.CTkFrame) -> None:
-        bar = ctk.CTkFrame(main, fg_color="transparent")
-        bar.pack(fill="x", pady=(4, 0))
-
-        stat = ctk.CTkFrame(bar, fg_color="transparent")
-        stat.pack(side="left")
-
-        self.chip_ok      = make_chip(stat, Tone.OK)
-        self.chip_no_cte  = make_chip(stat, Tone.WARNING)
-        self.chip_not_found = make_chip(stat, Tone.ERROR)
-        self.chip_failed  = make_chip(stat, Tone.CONNECTION)
-        self.chip_img_yes = make_chip(stat, Tone.INFO)
-        self.chip_img_no  = make_chip(stat, Tone.NEUTRAL)
-        self._reset_chips()
-
-        self.btn_export = ctk.CTkButton(
-            bar, text="Exportar Excel", width=140,
-            command=self._export, state="disabled",
-        )
-        self.btn_export.pack(side="right")
-
-    def _build_history(self, main: ctk.CTkFrame) -> None:
-        self._hist = HistoryPanel(main, on_restore=self._restore)
+        bar = ctk.CTkFrame(main, fg_color=theme.TRANSPARENT)
+        bar.pack(side="bottom", fill="x")
+        self.btn_export = _primary_button(bar, "Exportar Excel", "download", self._export, state="disabled")
+        self.btn_export.pack(side="right", anchor="n")
+        history = ctk.CTkFrame(bar, fg_color=theme.TRANSPARENT)
+        history.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_LG))
+        self._hist = HistoryPanel(history, on_restore=self._restore)
 
     # ------------------------------------------------------------------
-    # HELPERS VISUAIS
+    # TABELA E FILTROS
     # ------------------------------------------------------------------
 
     def _rows(self) -> list[dict]:
@@ -165,62 +146,31 @@ class SearchFrame(ctk.CTkFrame):
     def _failures(self) -> list[int]:
         return [n for n, r in self._results.items() if r["Status"] == CONNECTION_FAILED]
 
-    def _reset_chips(self) -> None:
-        self._set_chips(0, 0, 0, 0, 0, 0)
+    def _render(self) -> None:
+        """Redraw the table for the active filter (the Treeview handles hundreds of rows quickly)."""
+        rows = visible_rows(self._rows(), self._chip)
+        self.table.show(rows, self._multiplicity, _EMPTY_FILTER if self._results else "")
 
-    def _update_chips(self) -> None:
-        statuses = [r["Status"] for r in self._rows()]
-        images   = [r.get("Imagem") for r in self._rows()]
-        self._set_chips(
-            statuses.count(SEARCH_OK), statuses.count(SEARCH_NO_CTE), statuses.count(SEARCH_NOT_FOUND),
-            statuses.count(CONNECTION_FAILED), images.count("Sim"), images.count("Não"),
-        )
+    def _on_chip(self, key: str) -> None:
+        self._chip = key
+        self.chips.set_active(key)
+        self._render()
 
-    def _set_chips(self, ok: int, no_cte: int, not_found: int, failed: int, img_yes: int, img_no: int) -> None:
-        self.chip_ok.configure(text=f"{ok}  Com CT-e")
-        self.chip_no_cte.configure(text=f"{no_cte}  Sem CT-e")
-        self.chip_not_found.configure(text=f"{not_found}  Não cadastrada")
-        self.chip_failed.configure(text=f"{failed}  Falha de conexão")
-        self.chip_img_yes.configure(text=f"{img_yes}  Com imagem")
-        self.chip_img_no.configure(text=f"{img_no}  Sem imagem")
+    def _update_counts(self) -> None:
+        self.chips.set_counts(chip_counts(self._rows()))
 
-    def _update_retry_button(self) -> None:
-        failures = self._failures()
-        if failures and not self._searching:
-            self.btn_retry.configure(text=f"Tentar de novo só essas ({len(failures)})")
-            self.btn_retry.pack(side="left", padx=(12, 0))
-        else:
-            self.btn_retry.pack_forget()
-
-    def _insert_row(self, parent, r: dict, number: int | None = None, before=None) -> None:
-        if number is None:
-            self._row_count += 1
-            number = self._row_count
-        texts = [str(number), str(r["NF-e"]), r["CT-e"], format_image(r.get("Imagem"))]
-        row = insert_row(parent, number, _COLS, texts, r["Status"], search_tone(r["Status"]))
-        if before is not None:
-            row.pack_configure(before=before)
-        self._row_widgets[r["NF-e"]] = (row, number)
-
-    def _replace_row(self, r: dict) -> None:
-        """Swap the widget of a retried invoice in place; redrawing the whole table costs seconds."""
-        shown = self._row_widgets.get(r["NF-e"])
-        if shown is None or not _FILTERS[self.option_filter.get()](r):
-            self._redraw_table()  # visibility changed under an active filter (rare)
-            return
-        old_row, number = shown
-        self._insert_row(self.scroll, r, number, before=old_row)
-        old_row.destroy()
-
-    def _clear_table(self) -> None:
-        clear_scroll(self.scroll)
-        self._results   = {}
-        self._row_widgets = {}
-        self._row_count = 0
-        self._current_entry = None
+    def _reset_view(self) -> None:
+        self._results = {}
+        self._multiplicity = {}
+        self._chip = "all"
+        self.chips.set_active("all")
+        self._update_counts()
+        self.table.clear()
+        self._conn_banner.hide()
+        self._retry_banner.hide()
 
     # ------------------------------------------------------------------
-    # AÇÕES
+    # BUSCA
     # ------------------------------------------------------------------
 
     def _back(self) -> None:
@@ -263,9 +213,8 @@ class SearchFrame(ctk.CTkFrame):
     def _begin_search(self, query: str, invoices: list[int]) -> None:
         if self._searching:  # "Consultar" on the banner while a retry is already running
             return
-        self._clear_table()
-        self.option_filter.set("Todos")
-        self._reset_chips()
+        self._current_entry = None
+        self._reset_view()
         self._run(invoices, query, retry=False)
 
     def _retry_failures(self) -> None:
@@ -273,17 +222,21 @@ class SearchFrame(ctk.CTkFrame):
             return
         failures = self._failures()
         if failures:
+            self._conn_banner.hide()
+            self._retry_banner.show(
+                Tone.INFO, "Consultando de novo só as NF-es que falharam…", icon="rotate-cw",
+            )
             self._run(failures, self._current_entry["query"], retry=True)
 
     def _run(self, invoices: list[int], query: str, retry: bool) -> None:
         self._confirm.hide()
+        self._elapsed_before = self._elapsed if retry else 0.0  # a retry adds to the search time
         self._searching = True
         self._stop_event.clear()
         set_message(self.lbl_progress, "")
         self.progressbar.set(0)
         self.btn_clear.configure(state="disabled")
         self.btn_export.configure(state="disabled")
-        self._update_retry_button()
         self._btn_search_style = show_cancel(self.btn_search, self._cancel)
 
         def finish(**kwargs):
@@ -308,88 +261,80 @@ class SearchFrame(ctk.CTkFrame):
     def _cancel(self) -> None:
         self._stop_event.set()
 
-    # ------------------------------------------------------------------
-    # FILTRO
-    # ------------------------------------------------------------------
-
-    def _on_filter_change(self, _value: str = "") -> None:
-        self._redraw_table()
-
-    def _redraw_table(self) -> None:
-        clear_scroll(self.scroll)
-        self._row_widgets = {}
-        self._row_count = 0
-        predicate = _FILTERS[self.option_filter.get()]
-        for r in self._rows():
-            if predicate(r):
-                self._insert_row(self.scroll, r)
-
-    # ------------------------------------------------------------------
-    # ATUALIZAÇÃO DA TABELA
-    # ------------------------------------------------------------------
-
     def _add_row(self, r: dict, prog: float, current: int, total: int, elapsed: float) -> None:
         self.progressbar.set(prog)
-        m, s = divmod(int(elapsed), 60)
+        self._elapsed = self._elapsed_before + elapsed
+        m, s = divmod(int(self._elapsed), 60)
         set_message(self.lbl_progress, f"NF-e {r['NF-e']}  ({current}/{total})  {m:02d}:{s:02d}")
+
         retried = r["NF-e"] in self._results
         self._results[r["NF-e"]] = r
-        if retried:
-            self._replace_row(r)
-        elif _FILTERS[self.option_filter.get()](r):
-            self._insert_row(self.scroll, r)
-        self._update_chips()
+        multiplicity = cte_multiplicity(self._rows())
+        # Rewrite the CT-e column only when a "×N" mark changed, not for every new CT-e seen once.
+        repeated = {cte: n for cte, n in multiplicity.items() if n > 1}
+        shared_cte = repeated != {cte: n for cte, n in self._multiplicity.items() if n > 1}
+        self._multiplicity = multiplicity
 
-    # ------------------------------------------------------------------
-    # FINALIZAÇÃO
-    # ------------------------------------------------------------------
+        matches = bool(visible_rows([r], self._chip))
+        if retried:
+            # Same invoice queried again: update its row in place, or redraw if it enters/leaves the filter.
+            if not (matches and self.table.update_row(r, multiplicity)):
+                self._render()
+        elif matches:
+            self.table.append(r, multiplicity)
+        if shared_cte:
+            self.table.refresh_multiplicity(multiplicity, self._results)
+        self._update_counts()
 
     def _finish(self, query: str, retry: bool, cancelled: bool = False, session_lost: bool = False) -> None:
         self._searching = False
         restore_button(self.btn_search, self._btn_search_style)
         self.btn_search.configure(state="normal")
         self.btn_clear.configure(state="normal")
+        self._retry_banner.hide()
 
+        failures = self._failures()
         if session_lost:
             set_message(self.lbl_progress, "Sessão expirada. Saia e entre de novo.", Tone.ERROR)
         elif cancelled:
             set_message(self.lbl_progress, "Busca cancelada.")
         else:
             self.progressbar.set(1)
-            failures = self._failures()
-            if failures:
-                set_message(
-                    self.lbl_progress, f"Consulta concluída com {len(failures)} falha(s) de conexão.", Tone.CONNECTION,
-                )
-            else:
-                set_message(self.lbl_progress, "Consulta concluída.")
+            set_message(self.lbl_progress, status_text(len(self._results), len(failures), self._elapsed))
 
-        self._update_chips()
-        self._update_retry_button()
+        self._update_counts()
+        if self._chip != "all" and not chip_counts(self._rows())[self._chip]:
+            self._on_chip("all")  # e.g. every failure was fixed by "Tentar de novo"
+        self._show_connection_banner()
         if self._results:
             self.btn_export.configure(state="normal")
             self._save_history(query, update=retry)
 
+    def _show_connection_banner(self) -> None:
+        failures = len(self._failures())
+        if not failures or self._searching:
+            self._conn_banner.hide()
+            return
+        text = (f"{failures} NF-es não responderam" if failures > 1 else "1 NF-e não respondeu") + (
+            " mesmo após 3 tentativas. As outras estão certas, não precisa buscar tudo de novo."
+        )
+        label = f"Tentar de novo só essas {failures}" if failures > 1 else "Tentar de novo só essa"
+        self._conn_banner.show(Tone.CONNECTION, text, [(label, self._retry_failures)], icon="wifi-off")
+
     # ------------------------------------------------------------------
-    # LIMPAR
+    # LIMPAR E EXPORTAR
     # ------------------------------------------------------------------
 
     def _clear(self) -> None:
         self.entry_query.delete(0, "end")
         self._on_query_change()
         self._confirm.hide()
-        self._clear_table()
+        self._current_entry = None
+        self._reset_view()
         set_message(self.lbl_progress, "")
         self.progressbar.set(0)
-        self.option_filter.set("Todos")
-        self._reset_chips()
-        self._update_retry_button()
         self.btn_export.configure(state="disabled")
         self.entry_query.focus()
-
-    # ------------------------------------------------------------------
-    # EXPORTAR EXCEL
-    # ------------------------------------------------------------------
 
     def _export(self) -> None:
         if not self._results:
@@ -432,15 +377,14 @@ class SearchFrame(ctk.CTkFrame):
         self._on_query_change()
         self._confirm.hide()
 
-        self._clear_table()
+        self._reset_view()
         self._results = {r["NF-e"]: r for r in entry["results"]}
+        self._multiplicity = cte_multiplicity(self._rows())
         self._current_entry = entry
-        self.option_filter.set("Todos")
-        self._redraw_table()
-        self.scroll._parent_canvas.yview_moveto(0)
-
-        self._update_chips()
-        self._update_retry_button()
+        self._elapsed = 0.0  # the restored search's time isn't kept; a retry counts from zero
+        self._render()
+        self._update_counts()
+        self._show_connection_banner()
         set_message(self.lbl_progress, f"Histórico: {entry['label']}")
         self.progressbar.set(1)
         self.btn_export.configure(state="normal")
