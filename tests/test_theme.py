@@ -39,6 +39,14 @@ def test_status_colors_are_hex_pairs():
             assert HEX_COLOR.fullmatch(color), (tone, color)
 
 
+def test_banner_colors_cover_every_tone():
+    assert set(theme.BANNER) == set(theme.STATUS)
+    for tone, colors in theme.BANNER.items():
+        assert len(colors) == 3, tone  # text, bottom line, button outline
+        for color in colors:
+            assert HEX_COLOR.fullmatch(color), (tone, color)
+
+
 def test_radii_and_spacing_are_positive_ints():
     names = [n for n in vars(theme) if n.startswith(("RADIUS_", "SPACE_", "FONT_SIZE_"))]
     assert names

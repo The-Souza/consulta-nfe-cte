@@ -8,6 +8,7 @@ from utils.status import Tone, search_tone
 
 _STYLE = "Canhotos.Treeview"
 _DASH = "—"
+_HEADING_PAD_Y = 10
 
 # (id, heading, width, anchor, stretch)
 _COLUMNS = [
@@ -41,9 +42,11 @@ def _configure_style(widget) -> tuple[tkinter.font.Font, ...]:
         rowheight=_scaled(widget, 34), borderwidth=0, font=body,
     )
     style.map(_STYLE, background=[("selected", theme.SURFACE_2)], foreground=[("selected", theme.TEXT)])
+    # Horizontal padding kept small: the cells have none, so a larger one pushed the headings right of
+    # the values below them.
     style.configure(
         f"{_STYLE}.Heading", background=theme.SURFACE, foreground=theme.TEXT_MUTED, relief="flat",
-        borderwidth=0, font=heading, padding=(_scaled(widget, 8), _scaled(widget, 10)),
+        borderwidth=0, font=heading, padding=(_scaled(widget, 2), _scaled(widget, _HEADING_PAD_Y)),
     )
     style.map(f"{_STYLE}.Heading", background=[("active", theme.SURFACE)])
     return body, heading
@@ -85,11 +88,18 @@ class ResultsTable(ctk.CTkFrame):
             button_color=theme.SCROLLBAR_BUTTON, button_hover_color=theme.SCROLLBAR_BUTTON_HOVER,
         )
         self._tree.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y", padx=(0, 2), pady=2)
+        heading_height = self._fonts[1].metrics("linespace") + 2 * _scaled(self, _HEADING_PAD_Y)
+        # The scrollbar starts below the headings: it scrolls the rows only and doesn't cut the line.
+        scrollbar.pack(side="right", fill="y", padx=(0, 2), pady=(heading_height + 1, 2))
         self._tree.pack(side="left", fill="both", expand=True)
 
         self._empty = ctk.CTkLabel(
             self, text="", text_color=theme.TEXT_MUTED, fg_color=theme.SURFACE, font=theme.font(theme.FONT_SIZE_INPUT),
+        )
+
+        # ttk can't draw a line under the headings with these colors: lay a 1 px line where they end.
+        tkinter.Frame(self, height=1, bg=theme.BORDER, bd=0, highlightthickness=0).place(
+            x=0, y=heading_height, relwidth=1,
         )
 
     # ------------------------------------------------------------------

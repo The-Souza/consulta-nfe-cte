@@ -195,7 +195,7 @@ class SearchFrame(ctk.CTkFrame):
         text = f"Mostrando as {count} NF-es do CT-e {cte}" if count != 1 else f"Mostrando 1 NF-e do CT-e {cte}"
         if changed or not self._filter_banner.visible:
             self._filter_banner.show(
-                Tone.OK, text, [("Limpar filtro", lambda: self._on_pick_cte(None))], icon="funnel",
+                Tone.OK, text, [("Limpar filtro", lambda: self._on_pick_cte(None))], icon="funnel", filled=False,
             )
         else:
             self._filter_banner.set_text(text)  # same CT-e, new count: don't rebuild the banner

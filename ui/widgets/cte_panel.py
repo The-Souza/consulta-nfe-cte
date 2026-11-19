@@ -1,3 +1,4 @@
+import tkinter
 from typing import Callable
 
 import customtkinter as ctk
@@ -7,6 +8,11 @@ from utils.status import Tone
 
 MAX_ITEMS = 50  # a query can have thousands of CT-es; the panel shows the largest ones
 _WIDTH = 300
+
+
+def _divider(parent) -> tkinter.Frame:
+    """1 px line. A CTkFrame of height 1 isn't drawn (its rounded canvas needs more room)."""
+    return tkinter.Frame(parent, height=1, bg=theme.BORDER, bd=0, highlightthickness=0)
 
 
 def _plural(n: int, singular: str, plural: str) -> str:
@@ -55,8 +61,8 @@ class _CteItem(ctk.CTkFrame):
             self._shown_selected = selected
             ok_text, ok_bg = theme.STATUS[Tone.OK.value]
             self.configure(fg_color=ok_bg if selected else theme.TRANSPARENT,
-                           border_color=ok_text if selected else theme.SURFACE)
-            self._bar.configure(progress_color=ok_text if selected else theme.PROGRESS)
+                           border_color=theme.SELECTED_BORDER if selected else theme.SURFACE)
+            self._bar.configure(progress_color=ok_text if selected else theme.PANEL_BAR)
 
 
 class CtePanel(ctk.CTkFrame):
@@ -96,12 +102,12 @@ class CtePanel(ctk.CTkFrame):
         self._distinct.pack(side="right")
         ctk.CTkLabel(header, text="Clique em um CT-e para filtrar a tabela", text_color=theme.TEXT_MUTED,
                      height=18, anchor="w", font=theme.font(theme.FONT_SIZE_SM)).pack(fill="x")
-        ctk.CTkFrame(self, height=1, fg_color=theme.BORDER, corner_radius=0).pack(fill="x")
+        _divider(self).pack(fill="x", padx=1)
 
     def _build_footer(self, on_pick_no_cte: Callable[[], None]) -> None:
         footer = ctk.CTkFrame(self, fg_color=theme.TRANSPARENT)
         footer.pack(side="bottom", fill="x", padx=theme.SPACE_LG, pady=theme.SPACE_MD)
-        ctk.CTkFrame(self, height=1, fg_color=theme.BORDER, corner_radius=0).pack(side="bottom", fill="x")
+        _divider(self).pack(side="bottom", fill="x", padx=1)
 
         with_row = ctk.CTkFrame(footer, fg_color=theme.TRANSPARENT)
         with_row.pack(fill="x", pady=(0, theme.SPACE_SM))

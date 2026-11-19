@@ -41,6 +41,21 @@ STATUS: dict[str, tuple[str, str]] = {
     "neutral": ("#c4c4cc", "#2e2e33"),
 }
 
+# Banners over the results table: (softer text, bottom line, button outline). The background is the
+# STATUS background. ok/connection/info come from the design; the others follow the same tints.
+BANNER: dict[str, tuple[str, str, str]] = {
+    "ok": ("#c9f5da", "#24503a", "#2f7a52"),
+    "warning": ("#fbe7b2", "#5c4a18", "#7a6322"),
+    "error": ("#ffd2cd", "#6b2a2a", "#8a3a3a"),
+    "connection": ("#ffd9bd", "#6b4220", "#8a5530"),
+    "info": ("#cfe3ff", "#24476f", "#2f5f94"),
+    "neutral": ("#dcdce2", "#3f3f46", "#55555d"),
+}
+
+# Side panel bars: a muted green, the selected item uses the ok text color and outline
+PANEL_BAR = "#3f8f66"
+SELECTED_BORDER = "#2f7a52"
+
 # Radii
 RADIUS_INPUT = 8
 RADIUS_ICON = 10
