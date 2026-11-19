@@ -118,7 +118,7 @@ class SearchFrame(ctk.CTkFrame):
     def _build_card(self, main: ctk.CTkFrame) -> None:
         content = ctk.CTkFrame(main, fg_color=theme.TRANSPARENT)
         content.pack(fill="both", expand=True, pady=(theme.SPACE_MD, theme.SPACE_MD))
-        self.panel = CtePanel(content, on_pick_cte=self._on_pick_cte, on_pick_no_cte=lambda: self._on_chip("no_cte"))
+        self.panel = CtePanel(content, on_pick_cte=self._on_pick_cte, on_pick_no_cte=self._on_pick_no_cte)
         self.panel.pack(side="right", fill="y", padx=(theme.SPACE_LG, 0))
         card = ctk.CTkFrame(
             content, fg_color=theme.SURFACE, border_color=theme.BORDER, border_width=1, corner_radius=theme.RADIUS_CARD,
@@ -170,6 +170,11 @@ class SearchFrame(ctk.CTkFrame):
         self.chips.set_active(key)
         self._render()
 
+    def _on_pick_no_cte(self) -> None:
+        """'NF-es sem CT-e' link in the panel: same as the chip, so it does nothing when the count is 0."""
+        if chip_counts(self._rows())["no_cte"]:
+            self._on_chip("no_cte")
+
     def _on_pick_cte(self, cte: str | None) -> None:
         """Click in the side panel: filter the table by that CT-e, or clear it (same CT-e again).
         Picking a CT-e resets the chip to "Todos", so clearing the CT-e shows every invoice again."""
@@ -180,6 +185,7 @@ class SearchFrame(ctk.CTkFrame):
         self._render()
 
     def _set_cte(self, cte: str | None) -> None:
+        changed = cte != self._cte
         self._cte = cte
         self.panel.select(cte)
         if cte is None:
@@ -187,7 +193,12 @@ class SearchFrame(ctk.CTkFrame):
             return
         count = self._multiplicity.get(cte, 0)
         text = f"Mostrando as {count} NF-es do CT-e {cte}" if count != 1 else f"Mostrando 1 NF-e do CT-e {cte}"
-        self._filter_banner.show(Tone.OK, text, [("Limpar filtro", lambda: self._on_pick_cte(None))], icon="funnel")
+        if changed or not self._filter_banner.visible:
+            self._filter_banner.show(
+                Tone.OK, text, [("Limpar filtro", lambda: self._on_pick_cte(None))], icon="funnel",
+            )
+        else:
+            self._filter_banner.set_text(text)  # same CT-e, new count: don't rebuild the banner
 
     def _update_counts(self) -> None:
         """Chips and side panel. Called directly when something changed at once, or by the throttle."""
@@ -200,6 +211,8 @@ class SearchFrame(ctk.CTkFrame):
         self.panel.update_counts(
             cte_counts(rows), with_cte=sum(self._multiplicity.values()), without_cte=counts["no_cte"],
         )
+        if self._cte is not None:
+            self._set_cte(self._cte)  # rows of the picked CT-e may have arrived: keep the banner count right
 
     def destroy(self) -> None:
         if self._counts_job is not None:  # Voltar/Sair during a search

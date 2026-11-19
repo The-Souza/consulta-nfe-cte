@@ -84,3 +84,12 @@ class Banner:
     @property
     def visible(self) -> bool:
         return self._bar.winfo_manager() != ""
+
+    @property
+    def text(self) -> str:
+        return self._text.cget("text")
+
+    def set_text(self, text: str) -> None:
+        """Change only the message of a banner already shown (show() would rebuild its buttons)."""
+        if text != self.text:
+            self._text.configure(text=text)
