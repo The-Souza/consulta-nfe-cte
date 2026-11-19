@@ -9,8 +9,13 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 ### Adicionado
 - Consulta: motorista e data de entrega de cada NF-e, lidos de uma tabela no Supabase (só leitura). Quando o carregamento foi lançado com um XML único e a NF-e não está na tabela, o motorista vem pelo CT-e.
 - Excel: colunas Motorista e Entrega na aba "Consulta".
-- Consulta: limite de 200 NF-es por consulta, contando só as diferentes (antes eram 5.000, com confirmação acima de 500). A confirmação saiu.
 - Configuração opcional `SUPABASE_URL` e `SUPABASE_ANON_KEY` no `.env`, e o SQL da tabela em `supabase/001_entregas.sql`. Sem elas, ou com o Supabase fora do ar, a consulta funciona normalmente.
+
+### Alterado
+- Consulta: o limite passa de 5.000 para 200 NF-es por consulta, contando só as diferentes. Uma lista colada com repetidas não é mais recusada por causa delas.
+
+### Removido
+- Consulta: a confirmação acima de 500 NF-es.
 
 ## [2.0.0-alpha.2] — 2026-11-19
 

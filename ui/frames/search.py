@@ -251,8 +251,7 @@ class SearchFrame(ctk.CTkFrame):
 
     def _on_query_change(self, _event=None) -> None:
         text = self.entry_query.get()
-        # KeyRelease also fires for Enter, arrows and Shift: only react when the text really changed,
-        # otherwise releasing the Enter that asked for confirmation would hide it right away.
+        # KeyRelease also fires for Enter, arrows and Shift: only parse again when the text really changed.
         if text == self._last_query:
             return
         self._last_query = text

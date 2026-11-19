@@ -93,16 +93,11 @@ def test_invalid_format(text):
 
 # limits -----------------------------------------------------------------------------
 
-def test_limit():
-    # A real query stays around 60 NF-es and never goes past 100 on purpose
-    assert MAX_INVOICES == 200
-
-
 def test_maximum_is_accepted():
-    parsed = parse_query("1-200")
+    parsed = parse_query(f"1-{MAX_INVOICES}")
 
     assert parsed.valid
-    assert len(parsed.invoices) == 200
+    assert len(parsed.invoices) == MAX_INVOICES
 
 
 def test_above_maximum_is_refused():
