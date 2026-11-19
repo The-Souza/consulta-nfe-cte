@@ -1,6 +1,6 @@
 import pytest
 
-from utils.search_results import CHIPS, chip_counts, cte_multiplicity, status_text, visible_rows
+from utils.search_results import CHIPS, chip_counts, cte_counts, cte_multiplicity, status_text, visible_rows
 from utils.status import CONNECTION_FAILED, SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
 
 
@@ -90,6 +90,28 @@ def test_cte_multiplicity_counts_invoices_per_cte():
 
 def test_cte_multiplicity_ignores_missing_cte():
     assert cte_multiplicity([row(1, cte="-"), row(2, cte="")]) == {}
+
+
+# cte counts (side panel) ------------------------------------------------------------
+
+def test_cte_counts_sorted_by_quantity():
+    rows = [row(1, cte="200"), row(2, cte="100"), row(3, cte="100"), row(4, cte="300"), row(5, cte="100")]
+
+    assert cte_counts(rows) == [("100", 3), ("200", 1), ("300", 1)]
+
+
+def test_cte_counts_break_ties_by_cte_number():
+    rows = [row(1, cte="25541"), row(2, cte="5533"), row(3, cte="25540")]
+
+    assert cte_counts(rows) == [("5533", 1), ("25540", 1), ("25541", 1)]
+
+
+def test_cte_counts_ignore_invoices_without_cte():
+    assert cte_counts(ROWS) == [("100", 2), ("200", 1)]
+
+
+def test_cte_counts_without_rows():
+    assert cte_counts([]) == []
 
 
 # status text ------------------------------------------------------------------------
