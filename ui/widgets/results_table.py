@@ -90,7 +90,9 @@ class ResultsTable(ctk.CTkFrame):
         self._tree.configure(yscrollcommand=scrollbar.set)
         heading_height = self._fonts[1].metrics("linespace") + 2 * _scaled(self, _HEADING_PAD_Y)
         # The scrollbar starts below the headings: it scrolls the rows only and doesn't cut the line.
-        scrollbar.pack(side="right", fill="y", padx=(0, 2), pady=(heading_height + 1, 2))
+        # heading_height is in physical px, but a CTk widget's pack() scales pady by the zoom again.
+        scaling = ctk.ScalingTracker.get_widget_scaling(self)
+        scrollbar.pack(side="right", fill="y", padx=(0, 2), pady=((heading_height + 1) / scaling, 2))
         self._tree.pack(side="left", fill="both", expand=True)
 
         self._empty = ctk.CTkLabel(
