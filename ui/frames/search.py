@@ -20,6 +20,7 @@ from utils.search_results import chip_counts, cte_multiplicity, status_text, vis
 from utils.status import CONNECTION_FAILED, Tone
 
 _HISTORY_QUERY_CHARS = 40
+_COUNTS_INTERVAL_MS = 250
 _EMPTY_FILTER = "Nenhuma NF-e neste filtro."
 
 
@@ -46,6 +47,7 @@ class SearchFrame(ctk.CTkFrame):
         self._searching  = False
         self._elapsed    = 0.0
         self._elapsed_before = 0.0
+        self._counts_job: str | None = None  # pending chip refresh (after id)
         self._stop_event = threading.Event()
         self._btn_search_style: dict = {}
         self._last_query: str | None = None  # field text the parse label was computed for
@@ -157,7 +159,21 @@ class SearchFrame(ctk.CTkFrame):
         self._render()
 
     def _update_counts(self) -> None:
+        if self._counts_job is not None:
+            self.after_cancel(self._counts_job)
+            self._counts_job = None
         self.chips.set_counts(chip_counts(self._rows()))
+
+    def destroy(self) -> None:
+        if self._counts_job is not None:  # Voltar/Sair during a search
+            self.after_cancel(self._counts_job)
+            self._counts_job = None
+        super().destroy()
+
+    def _schedule_counts(self) -> None:
+        """During a search, refresh the chips at most every 250 ms instead of on every row."""
+        if self._counts_job is None:
+            self._counts_job = self.after(_COUNTS_INTERVAL_MS, self._update_counts)
 
     def _reset_view(self) -> None:
         self._results = {}
@@ -284,7 +300,7 @@ class SearchFrame(ctk.CTkFrame):
             self.table.append(r, multiplicity)
         if shared_cte:
             self.table.refresh_multiplicity(multiplicity, self._results)
-        self._update_counts()
+        self._schedule_counts()
 
     def _finish(self, query: str, retry: bool, cancelled: bool = False, session_lost: bool = False) -> None:
         self._searching = False

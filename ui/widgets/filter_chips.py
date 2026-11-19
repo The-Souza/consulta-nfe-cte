@@ -17,6 +17,19 @@ _DOT_TONES = {
 }
 _DOT_SIZE = 8
 
+_STATE_STYLES = {
+    "active": dict(
+        state="normal", fg_color=theme.TEXT, hover_color=theme.TEXT, text_color=theme.BG, border_color=theme.TEXT,
+    ),
+    "empty": dict(
+        state="disabled", fg_color=theme.TRANSPARENT, text_color_disabled=theme.TEXT_MUTED, border_color=theme.BORDER,
+    ),
+    "normal": dict(
+        state="normal", fg_color=theme.SURFACE, hover_color=theme.SURFACE_2, text_color=theme.TEXT,
+        border_color=theme.BORDER_INPUT,
+    ),
+}
+
 
 @lru_cache
 def _dot(color: str) -> ctk.CTkImage:
@@ -37,6 +50,7 @@ class FilterChips(ctk.CTkFrame):
         self._labels = {key: label for key, label, _ in CHIPS}
         self._counts = {key: 0 for key in self._labels}
         self._active: str | None = "all"
+        self._shown: dict[str, tuple[str | None, str | None]] = {}  # key -> (text, state) on screen
 
         ctk.CTkLabel(
             self, text="Filtrar:", text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM),
@@ -67,21 +81,21 @@ class FilterChips(ctk.CTkFrame):
             self._on_pick(key)
 
     def _render(self) -> None:
+        # Each CTkButton.configure redraws the whole button, which flickers when the counts change on
+        # every search row: only touch what changed (the text, or the colors when the state changes).
         for key, button in self._buttons.items():
             count = self._counts.get(key, 0)
-            button.configure(text=f"{self._labels[key]}   {count}")
+            text = f"{self._labels[key]}   {count}"
             if key == self._active:
-                button.configure(
-                    state="normal", fg_color=theme.TEXT, hover_color=theme.TEXT, text_color=theme.BG,
-                    border_color=theme.TEXT,
-                )
+                state = "active"
             elif count == 0 and key != "all":
-                button.configure(
-                    state="disabled", fg_color=theme.TRANSPARENT, text_color_disabled=theme.TEXT_MUTED,
-                    border_color=theme.BORDER,
-                )
+                state = "empty"
             else:
-                button.configure(
-                    state="normal", fg_color=theme.SURFACE, hover_color=theme.SURFACE_2, text_color=theme.TEXT,
-                    border_color=theme.BORDER_INPUT,
-                )
+                state = "normal"
+
+            shown_text, shown_state = self._shown.get(key, (None, None))
+            if state != shown_state:
+                button.configure(text=text, **_STATE_STYLES[state])
+            elif text != shown_text:
+                button.configure(text=text)
+            self._shown[key] = (text, state)
