@@ -277,6 +277,16 @@ def test_cancel_while_supabase_is_slow_cancels_without_waiting():
     assert run.drivers_seen == []
 
 
+def test_unexpected_error_in_the_read_fails_the_lookup_and_the_search_goes_on():
+    def broken_get_drivers(invoices):
+        raise AttributeError("unexpected")
+
+    run = Run({1: [OK]}, get_drivers=broken_get_drivers)
+
+    assert run.drivers_seen == [DriverLookup({}, None, "failed")]
+    assert run.events == [("row", 1, SEARCH_OK), ("done", [])]
+
+
 def test_cancel_before_the_search_still_reports_the_lookup():
     stop = threading.Event()
     stop.set()

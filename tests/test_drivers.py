@@ -306,12 +306,13 @@ def test_by_cte_with_several_invoices_keeps_one_delivery(configured):
 
 
 @responses.activate
-def test_by_cte_reads_in_batches_of_200(configured):
+def test_by_cte_reads_in_batches_of_50(configured):
+    # A CT-e groups several invoices, so 50 CT-es stay well under the 1,000 rows per response
     _serve([])
 
-    get_drivers_by_cte(set(range(1, 451)))
+    get_drivers_by_cte(set(range(1, 121)))
 
-    assert [len(_cte_values(call)) for call in responses.calls] == [200, 200, 50]
+    assert [len(_cte_values(call)) for call in responses.calls] == [50, 50, 20]
 
 
 @responses.activate

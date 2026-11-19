@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 TIMEOUT = (5, 15)
 BATCH_SIZE = 200
+CTE_BATCH_SIZE = 50  # a CT-e has up to ~12 invoices: 50 CT-es stay under PAGE_SIZE rows
 PAGE_SIZE = 1000  # PostgREST default max rows per response
 _COLUMNS = "nfe,cte,motorista,data_entrega"
 _FRACTION = re.compile(r"\.(\d+)")
@@ -60,7 +61,7 @@ def get_drivers_by_cte(ctes: Iterable[int], session: requests.Session | None = N
 
     def read(http: requests.Session) -> tuple[dict[int, Delivery], datetime | None]:
         deliveries: dict[int, Delivery] = {}
-        for row in _read_batches(http, "cte", wanted):
+        for row in _read_batches(http, "cte", wanted, CTE_BATCH_SIZE):
             deliveries.setdefault(int(row["cte"]), _delivery(row))
         return deliveries, None
 
@@ -130,10 +131,10 @@ def _read_range(http: requests.Session, first: int, last: int) -> list[dict]:
         offset += PAGE_SIZE
 
 
-def _read_batches(http: requests.Session, column: str, values: list[int]) -> list[dict]:
+def _read_batches(http: requests.Session, column: str, values: list[int], size: int = BATCH_SIZE) -> list[dict]:
     rows: list[dict] = []
-    for start in range(0, len(values), BATCH_SIZE):
-        batch = ",".join(map(str, values[start:start + BATCH_SIZE]))
+    for start in range(0, len(values), size):
+        batch = ",".join(map(str, values[start:start + size]))
         rows.extend(_get(http, [("select", _COLUMNS), (column, f"in.({batch})")]))
     return rows
 

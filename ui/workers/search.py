@@ -124,7 +124,15 @@ class SearchWorker:
         """Runs a Supabase read on its own thread so Cancelar answers at once, even while a request
         waits for its timeout. A cancelled read is abandoned; its result is ignored."""
         result: list[DriverLookup] = []
-        thread = threading.Thread(target=lambda: result.append(read()), daemon=True)
+
+        def target() -> None:
+            try:
+                result.append(read())
+            except Exception:  # never leave the search without an answer
+                logger.warning("Unexpected error reading drivers", exc_info=True)
+                result.append(DriverLookup({}, None, "failed"))
+
+        thread = threading.Thread(target=target, daemon=True)
         thread.start()
         while True:
             thread.join(CANCEL_POLL_SECONDS)
