@@ -23,7 +23,7 @@ class SearchCallbacks:
     on_done: Callable[[list[int]], None]  # invoices that still failed by connection
     on_cancel: Callable[[], None]
     on_session_lost: Callable[[], None]
-    on_drivers: Callable[[DriverLookup], None]  # drivers read from Supabase, before the first invoice
+    on_drivers: Callable[[DriverLookup], None]  # before the first invoice, and again if the CT-e found more
 
 
 class SearchWorker:
@@ -45,6 +45,7 @@ class SearchWorker:
         pace: float = PACE_SECONDS,
         drivers: DriverLookup | None = None,  # already read: a retry doesn't read Supabase again
         get_drivers: Callable[[list[int]], DriverLookup] = drivers.get_drivers,
+        get_drivers_by_cte: Callable[[set[int]], DriverLookup] = drivers.get_drivers_by_cte,
     ):
         self._session     = session
         self._invoices    = invoices
@@ -58,6 +59,8 @@ class SearchWorker:
         self._pace        = pace
         self._drivers     = drivers
         self._get_drivers = get_drivers
+        self._get_drivers_by_cte = get_drivers_by_cte
+        self._rows: dict[int, dict] = {}  # latest row of each invoice of this run
         self._t0          = 0.0
 
     def run(self) -> None:
@@ -86,7 +89,34 @@ class SearchWorker:
         if failures:
             self._after(0, self._cb.on_notice, f"Tentando de novo {len(failures)} NF-e(s) com falha de conexão…")
             failures = self._pass(failures)
+        self._fill_drivers_by_cte()
         return failures
+
+    def _fill_drivers_by_cte(self) -> None:
+        """A load issued with a single XML has no invoices in the sheet, only its CT-e: rows still without
+        a driver get the driver and date of their CT-e."""
+        if self._drivers is None or self._drivers.state != "ok":
+            return
+        pending = [r for r in self._rows.values() if not r["Motorista"] and r["CT-e"].isdigit()]
+        if not pending:
+            return
+        if self._stop.is_set():
+            raise api.Cancelled()
+        by_cte = self._get_drivers_by_cte({int(r["CT-e"]) for r in pending}).deliveries
+        found: dict = {}
+        total = len(self._invoices)
+        for row in pending:
+            delivery = by_cte.get(int(row["CT-e"]))
+            if delivery is None:
+                continue
+            found[row["NF-e"]] = delivery
+            updated = {**row, "Motorista": delivery.driver, "Entrega": delivery.date}
+            self._after(0, self._cb.on_row, updated, 1.0, total, total, time.time() - self._t0)
+        if found:
+            self._drivers = DriverLookup(
+                {**self._drivers.deliveries, **found}, self._drivers.updated_at, self._drivers.state,
+            )
+            self._after(0, self._cb.on_drivers, self._drivers)
 
     def _pass(self, invoices: list[int]) -> list[int]:
         failures: list[int] = []
@@ -97,6 +127,7 @@ class SearchWorker:
                 raise api.Cancelled()
 
             row, connection_failed = self._query(invoice_num)
+            self._rows[invoice_num] = row
             self._after(0, self._cb.on_row, row, (i + 1) / total, i + 1, total, time.time() - self._t0)
 
             if connection_failed:

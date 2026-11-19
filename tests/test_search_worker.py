@@ -38,7 +38,7 @@ class Run:
 
     def __init__(
         self, script, *, relogin=lambda: None, stop=None, wait=None, warm_up=None,
-        drivers=None, lookup=OFF,
+        drivers=None, lookup=OFF, by_cte=None,
     ):
         self.events: list[tuple] = []
         self.rows: list[dict] = []
@@ -48,9 +48,15 @@ class Run:
         self.drivers_seen: list[DriverLookup] = []
         self.get_invoice = FakeInvoices(script)
 
+        self.cte_reads: list[set[int]] = []
+
         def get_drivers(invoices):
             self.driver_reads.append((list(invoices), len(self.get_invoice.calls)))
             return lookup
+
+        def get_drivers_by_cte(ctes):
+            self.cte_reads.append(set(ctes))
+            return by_cte or DriverLookup({}, None, "ok")
 
         callbacks = SearchCallbacks(
             on_row=self._on_row,
@@ -73,6 +79,7 @@ class Run:
             pace=0,
             drivers=drivers,
             get_drivers=get_drivers,
+            get_drivers_by_cte=get_drivers_by_cte,
         ).run()
 
     def _on_row(self, row, prog, current, total, elapsed):
@@ -179,6 +186,68 @@ def test_failed_lookup_does_not_stop_the_search():
     assert run.drivers_seen == [failed_lookup]
     assert run.events == [("row", 1, SEARCH_OK), ("done", [])]
     assert run.rows[0]["Motorista"] == ""
+
+
+# drivers by CT-e (load issued with a single XML) ------------------------------------
+
+LOAD = ("25440", SEARCH_OK, "Não")
+EMPTY = DriverLookup({}, None, "ok")
+BY_CTE = DriverLookup({25440: Delivery("Paulo", date(2026, 10, 21))}, None, "ok")
+
+
+def test_invoices_without_driver_are_looked_up_by_cte_at_the_end():
+    run = Run({1: [OK], 5: [LOAD], 6: [LOAD]}, lookup=LOOKUP, by_cte=BY_CTE)
+
+    assert run.cte_reads == [{25440}]
+    assert run.events[-3:] == [("row", 5, SEARCH_OK), ("row", 6, SEARCH_OK), ("done", [])]
+    assert [(r["NF-e"], r["Motorista"], r["Entrega"]) for r in run.rows[-2:]] == [
+        (5, "Paulo", date(2026, 10, 21)), (6, "Paulo", date(2026, 10, 21)),
+    ]
+
+
+def test_the_merged_lookup_is_reported_again():
+    run = Run({1: [OK], 5: [LOAD]}, lookup=LOOKUP, by_cte=BY_CTE)
+
+    merged = run.drivers_seen[-1]
+    assert merged.deliveries[5] == Delivery("Paulo", date(2026, 10, 21))
+    assert merged.deliveries[1] == LOOKUP.deliveries[1]
+    assert len(run.drivers_seen) == 2
+
+
+def test_only_rows_without_driver_and_with_cte_are_looked_up():
+    run = Run({1: [OK], 3: [NOT_FOUND], 4: [failed(), failed()], 5: [LOAD]}, lookup=LOOKUP, by_cte=BY_CTE)
+
+    assert run.cte_reads == [{25440}]
+
+
+def test_cte_not_found_leaves_the_row_untouched():
+    run = Run({5: [LOAD]}, lookup=EMPTY, by_cte=EMPTY)
+
+    assert run.cte_reads == [{25440}]
+    assert run.events == [("row", 5, SEARCH_OK), ("done", [])]
+    assert run.drivers_seen == [EMPTY]
+
+
+def test_nothing_pending_makes_no_cte_read():
+    run = Run({1: [OK], 2: [NO_CTE]}, lookup=LOOKUP)
+
+    assert run.cte_reads == []
+
+
+@pytest.mark.parametrize("state", ["off", "failed"])
+def test_no_cte_read_when_supabase_is_off_or_failed(state):
+    run = Run({5: [LOAD]}, lookup=DriverLookup({}, None, state))
+
+    assert run.cte_reads == []
+
+
+def test_retry_reuses_drivers_found_by_cte():
+    merged = DriverLookup({5: Delivery("Paulo", date(2026, 10, 21))}, None, "ok")
+
+    run = Run({5: [LOAD]}, drivers=merged)
+
+    assert run.cte_reads == []
+    assert run.rows[0]["Motorista"] == "Paulo"
 
 
 def test_cancel_before_the_search_still_reports_the_lookup():

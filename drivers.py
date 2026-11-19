@@ -3,7 +3,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Iterable, Literal
+from typing import Callable, Iterable, Literal
 
 import requests
 
@@ -38,21 +38,33 @@ def get_drivers(nfes: Iterable[int], session: requests.Session | None = None) ->
     wanted = sorted(set(nfes))
     if not wanted:
         return DriverLookup({}, None, "ok")
-    http = session or requests.Session()
-    try:
+
+    def read(http: requests.Session) -> tuple[dict[int, Delivery], datetime | None]:
         if len(wanted) > 1 and wanted[-1] - wanted[0] == len(wanted) - 1:
             rows = _read_range(http, wanted[0], wanted[-1])
         else:
             rows = _read_batches(http, "nfe", wanted)
-        deliveries = {int(row["nfe"]): _delivery(row) for row in rows}
-        updated_at = _read_updated_at(http)
-    except (requests.RequestException, ValueError, KeyError, TypeError):
-        logger.warning("Could not read drivers from Supabase", exc_info=True)
-        return DriverLookup({}, None, "failed")
-    finally:
-        if session is None:
-            http.close()
-    return DriverLookup(deliveries, updated_at, "ok")
+        return {int(row["nfe"]): _delivery(row) for row in rows}, _read_updated_at(http)
+
+    return _lookup(read, session)
+
+
+def get_drivers_by_cte(ctes: Iterable[int], session: requests.Session | None = None) -> DriverLookup:
+    """Driver and delivery date keyed by CT-e, for invoices of a load issued with a single XML.
+    Every row of a CT-e has the same driver and date, so the first one is kept."""
+    if not (SUPABASE_URL and SUPABASE_ANON_KEY):
+        return DriverLookup({}, None, "off")
+    wanted = sorted(set(ctes))
+    if not wanted:
+        return DriverLookup({}, None, "ok")
+
+    def read(http: requests.Session) -> tuple[dict[int, Delivery], datetime | None]:
+        deliveries: dict[int, Delivery] = {}
+        for row in _read_batches(http, "cte", wanted):
+            deliveries.setdefault(int(row["cte"]), _delivery(row))
+        return deliveries, None
+
+    return _lookup(read, session)
 
 
 def sheet_label(updated_at: datetime | None, now: datetime) -> str:
@@ -68,6 +80,22 @@ def sheet_label(updated_at: datetime | None, now: datetime) -> str:
     else:
         when = day.strftime("%d/%m/%Y")
     return f"planilha de {when}, {updated_at:%H:%M}"
+
+
+def _lookup(
+    read: Callable[[requests.Session], tuple[dict[int, Delivery], datetime | None]],
+    session: requests.Session | None,
+) -> DriverLookup:
+    http = session or requests.Session()
+    try:
+        deliveries, updated_at = read(http)
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        logger.warning("Could not read drivers from Supabase", exc_info=True)
+        return DriverLookup({}, None, "failed")
+    finally:
+        if session is None:
+            http.close()
+    return DriverLookup(deliveries, updated_at, "ok")
 
 
 def _get(http: requests.Session, params: list[tuple[str, str | int]]) -> list[dict]:

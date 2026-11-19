@@ -7,7 +7,7 @@ import requests
 import responses
 
 import drivers
-from drivers import Delivery, DriverLookup, get_drivers, sheet_label
+from drivers import Delivery, DriverLookup, get_drivers, get_drivers_by_cte, sheet_label
 
 BASE = "https://project.supabase.test"
 URL = f"{BASE}/rest/v1/entregas"
@@ -33,16 +33,17 @@ def _serve(rows, updated=UPDATED):
         if query["select"] == ["atualizado_em"]:
             return 200, {}, json.dumps([{"atualizado_em": updated}] if updated else [])
         selected = list(rows)
-        for condition in query.get("nfe", []):
-            op, _, value = condition.partition(".")
-            if op == "gte":
-                selected = [r for r in selected if r["nfe"] >= int(value)]
-            elif op == "lte":
-                selected = [r for r in selected if r["nfe"] <= int(value)]
-            elif op == "in":
-                wanted = {int(v) for v in value.strip("()").split(",")}
-                selected = [r for r in selected if r["nfe"] in wanted]
-        selected.sort(key=lambda r: r["nfe"])
+        for column in ("nfe", "cte"):
+            for condition in query.get(column, []):
+                op, _, value = condition.partition(".")
+                if op == "gte":
+                    selected = [r for r in selected if r[column] is not None and r[column] >= int(value)]
+                elif op == "lte":
+                    selected = [r for r in selected if r[column] is not None and r[column] <= int(value)]
+                elif op == "in":
+                    wanted = {int(v) for v in value.strip("()").split(",")}
+                    selected = [r for r in selected if r[column] in wanted]
+        selected.sort(key=lambda r: (r["nfe"] is None, r["nfe"] or 0))
         if "limit" in query:
             offset = int(query.get("offset", ["0"])[0])
             selected = selected[offset:offset + int(query["limit"][0])]
@@ -265,6 +266,59 @@ def test_failure_reading_updated_at_fails_the_whole_lookup(configured, caplog):
     _serve([_row(1)], updated="ontem")
 
     _assert_failed(get_drivers([1]), caplog)
+
+
+# get_drivers_by_cte --------------------------------------------------------------
+
+def _cte_values(call):
+    return parse_qs(urlparse(call.request.url).query)["cte"][0].removeprefix("in.(").removesuffix(")").split(",")
+
+
+@responses.activate
+def test_by_cte_without_configuration_is_off(monkeypatch):
+    monkeypatch.setattr(drivers, "SUPABASE_URL", "")
+
+    assert get_drivers_by_cte({25440}) == DriverLookup({}, None, "off")
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_by_cte_with_nothing_pending_makes_no_call(configured):
+    assert get_drivers_by_cte(set()) == DriverLookup({}, None, "ok")
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_by_cte_finds_the_load_row_without_invoices(configured):
+    _serve([_row(None, "Paulo", "2026-10-21", cte=25440), _row(9, "Outro", cte=25999)])
+
+    lookup = get_drivers_by_cte({25440, 31337})
+
+    assert lookup == DriverLookup({25440: Delivery("Paulo", date(2026, 10, 21))}, None, "ok")
+    assert _cte_values(responses.calls[0]) == ["25440", "31337"]
+
+
+@responses.activate
+def test_by_cte_with_several_invoices_keeps_one_delivery(configured):
+    _serve([_row(1, "Ana", cte=25000), _row(2, "Ana", cte=25000)])
+
+    assert get_drivers_by_cte({25000}).deliveries == {25000: Delivery("Ana", date(2026, 11, 12))}
+
+
+@responses.activate
+def test_by_cte_reads_in_batches_of_200(configured):
+    _serve([])
+
+    get_drivers_by_cte(set(range(1, 451)))
+
+    assert [len(_cte_values(call)) for call in responses.calls] == [200, 200, 50]
+
+
+@responses.activate
+def test_by_cte_failure_is_quiet(configured, caplog):
+    responses.get(URL, body=requests.ConnectionError("offline"))
+
+    _assert_failed(get_drivers_by_cte({25440}), caplog)
 
 
 # sheet_label ---------------------------------------------------------------------
