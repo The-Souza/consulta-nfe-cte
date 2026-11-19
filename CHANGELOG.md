@@ -4,6 +4,13 @@ Todas as mudanças relevantes do projeto ficam registradas aqui.
 
 O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/). As versões anteriores à 2.0.0 estão descritas nas [releases do GitHub](https://github.com/The-Souza/consulta-nfe-cte/releases).
 
+## [2.0.0-alpha.3] — em andamento
+
+### Adicionado
+- Consulta: motorista e data de entrega de cada NF-e, lidos de uma tabela no Supabase (só leitura). Quando o carregamento foi lançado com um XML único e a NF-e não está na tabela, o motorista vem pelo CT-e.
+- Excel: colunas Motorista e Entrega na aba "Consulta".
+- Configuração opcional `SUPABASE_URL` e `SUPABASE_ANON_KEY` no `.env`, e o SQL da tabela em `supabase/001_entregas.sql`. Sem elas, ou com o Supabase fora do ar, a consulta funciona normalmente.
+
 ## [2.0.0-alpha.2] — 2026-11-19
 
 ### Adicionado
