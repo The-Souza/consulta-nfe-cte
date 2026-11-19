@@ -38,7 +38,7 @@ class Run:
 
     def __init__(
         self, script, *, relogin=lambda: None, stop=None, wait=None, warm_up=None,
-        drivers=None, lookup=OFF, by_cte=None,
+        drivers=None, lookup=OFF, by_cte=None, get_drivers=None,
     ):
         self.events: list[tuple] = []
         self.rows: list[dict] = []
@@ -50,7 +50,7 @@ class Run:
 
         self.cte_reads: list[set[int]] = []
 
-        def get_drivers(invoices):
+        def recorded_get_drivers(invoices):
             self.driver_reads.append((list(invoices), len(self.get_invoice.calls)))
             return lookup
 
@@ -78,7 +78,7 @@ class Run:
             wait=wait or self.waits.append,
             pace=0,
             drivers=drivers,
-            get_drivers=get_drivers,
+            get_drivers=get_drivers or recorded_get_drivers,
             get_drivers_by_cte=get_drivers_by_cte,
         ).run()
 
@@ -248,6 +248,33 @@ def test_retry_reuses_drivers_found_by_cte():
 
     assert run.cte_reads == []
     assert run.rows[0]["Motorista"] == "Paulo"
+
+
+def test_a_failed_lookup_is_read_again_on_retry():
+    run = Run({1: [OK]}, drivers=DriverLookup({}, None, "failed"), lookup=LOOKUP)
+
+    assert run.driver_reads == [([1], 0)]
+    assert run.drivers_seen == [LOOKUP]
+    assert run.rows[0]["Motorista"] == "Ana"
+
+
+def test_cancel_while_supabase_is_slow_cancels_without_waiting():
+    stop = threading.Event()
+    release = threading.Event()
+
+    def slow_get_drivers(invoices):
+        stop.set()           # the user presses Cancelar during the read
+        release.wait(5)      # Supabase still hasn't answered
+        return LOOKUP
+
+    try:
+        run = Run({1: [OK]}, stop=stop, get_drivers=slow_get_drivers)
+    finally:
+        release.set()
+
+    assert run.events == [("cancel",)]
+    assert run.get_invoice.calls == []
+    assert run.drivers_seen == []
 
 
 def test_cancel_before_the_search_still_reports_the_lookup():

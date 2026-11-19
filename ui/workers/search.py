@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 BRAKE_AFTER = 3      # connection failures in a row before pausing
 BRAKE_SECONDS = 10
 PACE_SECONDS = 0.05  # gap between invoices, to not hammer the server
+CANCEL_POLL_SECONDS = 0.1  # how often a Supabase read checks Cancelar
 
 
 @dataclass
@@ -76,8 +77,8 @@ class SearchWorker:
     def _search(self) -> list[int]:
         if not self._invoices:
             return []
-        if self._drivers is None:
-            self._drivers = self._get_drivers(self._invoices)
+        if self._drivers is None or self._drivers.state == "failed":  # a retry may find Supabase back
+            self._drivers = self._cancellable(lambda: self._get_drivers(self._invoices))
             self._after(0, self._cb.on_drivers, self._drivers)
         try:
             self._warm_up(self._session, self._invoices[0])
@@ -102,7 +103,8 @@ class SearchWorker:
             return
         if self._stop.is_set():
             raise api.Cancelled()
-        by_cte = self._get_drivers_by_cte({int(r["CT-e"]) for r in pending}).deliveries
+        ctes = {int(r["CT-e"]) for r in pending}
+        by_cte = self._cancellable(lambda: self._get_drivers_by_cte(ctes)).deliveries
         found: dict = {}
         total = len(self._invoices)
         for row in pending:
@@ -117,6 +119,19 @@ class SearchWorker:
                 {**self._drivers.deliveries, **found}, self._drivers.updated_at, self._drivers.state,
             )
             self._after(0, self._cb.on_drivers, self._drivers)
+
+    def _cancellable(self, read: Callable[[], DriverLookup]) -> DriverLookup:
+        """Runs a Supabase read on its own thread so Cancelar answers at once, even while a request
+        waits for its timeout. A cancelled read is abandoned; its result is ignored."""
+        result: list[DriverLookup] = []
+        thread = threading.Thread(target=lambda: result.append(read()), daemon=True)
+        thread.start()
+        while True:
+            thread.join(CANCEL_POLL_SECONDS)
+            if not thread.is_alive():
+                return result[0]
+            if self._stop.is_set():
+                raise api.Cancelled()
 
     def _pass(self, invoices: list[int]) -> list[int]:
         failures: list[int] = []
