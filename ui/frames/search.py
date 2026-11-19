@@ -8,6 +8,7 @@ from ui import theme
 from ui.icons import get_icon
 from ui.widgets.banner import Banner
 from ui.widgets.buttons import restore_button, show_cancel
+from ui.widgets.cte_panel import CtePanel
 from ui.widgets.filter_chips import FilterChips
 from ui.widgets.history import HistoryPanel
 from ui.widgets.progress import set_message
@@ -16,7 +17,7 @@ from ui.widgets.topbar import make_topbar
 from ui.workers.search import SearchCallbacks, SearchWorker
 from utils.excel import export_excel
 from utils.nfe_query import CONFIRM_ABOVE, parse_query
-from utils.search_results import chip_counts, cte_multiplicity, status_text, visible_rows
+from utils.search_results import chip_counts, cte_counts, cte_multiplicity, status_text, visible_rows
 from utils.status import CONNECTION_FAILED, Tone
 
 _HISTORY_QUERY_CHARS = 40
@@ -42,6 +43,7 @@ class SearchFrame(ctk.CTkFrame):
         self._on_back    = on_back
         self._results: dict[int, dict] = {}  # NF-e -> row, in query order
         self._chip = "all"
+        self._cte: str | None = None  # CT-e picked in the side panel; takes precedence over the chip
         self._multiplicity: dict[str, int] = {}
         self._current_entry: dict | None = None  # history entry of the results on screen
         self._searching  = False
@@ -114,10 +116,14 @@ class SearchFrame(ctk.CTkFrame):
         self.progressbar.set(0)
 
     def _build_card(self, main: ctk.CTkFrame) -> None:
+        content = ctk.CTkFrame(main, fg_color=theme.TRANSPARENT)
+        content.pack(fill="both", expand=True, pady=(theme.SPACE_MD, theme.SPACE_MD))
+        self.panel = CtePanel(content, on_pick_cte=self._on_pick_cte, on_pick_no_cte=self._on_pick_no_cte)
+        self.panel.pack(side="right", fill="y", padx=(theme.SPACE_LG, 0))
         card = ctk.CTkFrame(
-            main, fg_color=theme.SURFACE, border_color=theme.BORDER, border_width=1, corner_radius=theme.RADIUS_CARD,
+            content, fg_color=theme.SURFACE, border_color=theme.BORDER, border_width=1, corner_radius=theme.RADIUS_CARD,
         )
-        card.pack(fill="both", expand=True, pady=(theme.SPACE_MD, theme.SPACE_MD))
+        card.pack(side="left", fill="both", expand=True)
         inner = ctk.CTkFrame(card, fg_color=theme.SURFACE, corner_radius=0)
         inner.pack(fill="both", expand=True, padx=1, pady=theme.SPACE_SM)
         self._confirm = Banner(inner, theme.SURFACE)
@@ -126,6 +132,8 @@ class SearchFrame(ctk.CTkFrame):
         self._conn_banner.pack(fill="x")
         self._retry_banner = Banner(inner, theme.SURFACE)
         self._retry_banner.pack(fill="x")
+        self._filter_banner = Banner(inner, theme.SURFACE)
+        self._filter_banner.pack(fill="x")
         self.table = ResultsTable(inner)
         self.table.pack(fill="both", expand=True)
 
@@ -134,6 +142,9 @@ class SearchFrame(ctk.CTkFrame):
         bar.pack(side="bottom", fill="x")
         self.btn_export = _primary_button(bar, "Exportar Excel", "download", self._export, state="disabled")
         self.btn_export.pack(side="right", anchor="n")
+        ctk.CTkLabel(
+            bar, text="Inclui a aba “Resumo CT-e”", text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM),
+        ).pack(side="right", anchor="n", padx=(0, theme.SPACE_MD), pady=(theme.SPACE_SM + 2, 0))
         history = ctk.CTkFrame(bar, fg_color=theme.TRANSPARENT)
         history.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_LG))
         self._hist = HistoryPanel(history, on_restore=self._restore)
@@ -150,19 +161,58 @@ class SearchFrame(ctk.CTkFrame):
 
     def _render(self) -> None:
         """Redraw the table for the active filter (the Treeview handles hundreds of rows quickly)."""
-        rows = visible_rows(self._rows(), self._chip)
+        rows = visible_rows(self._rows(), self._chip, self._cte)
         self.table.show(rows, self._multiplicity, _EMPTY_FILTER if self._results else "")
 
     def _on_chip(self, key: str) -> None:
         self._chip = key
+        self._set_cte(None)
         self.chips.set_active(key)
         self._render()
 
+    def _on_pick_no_cte(self) -> None:
+        """'NF-es sem CT-e' link in the panel: same as the chip, so it does nothing when the count is 0."""
+        if chip_counts(self._rows())["no_cte"]:
+            self._on_chip("no_cte")
+
+    def _on_pick_cte(self, cte: str | None) -> None:
+        """Click in the side panel: filter the table by that CT-e, or clear it (same CT-e again).
+        Picking a CT-e resets the chip to "Todos", so clearing the CT-e shows every invoice again."""
+        if cte is not None:
+            self._chip = "all"
+        self._set_cte(cte)
+        self.chips.set_active(None if cte else self._chip)
+        self._render()
+
+    def _set_cte(self, cte: str | None) -> None:
+        changed = cte != self._cte
+        self._cte = cte
+        self.panel.select(cte)
+        if cte is None:
+            self._filter_banner.hide()
+            return
+        count = self._multiplicity.get(cte, 0)
+        text = f"Mostrando as {count} NF-es do CT-e {cte}" if count != 1 else f"Mostrando 1 NF-e do CT-e {cte}"
+        if changed or not self._filter_banner.visible:
+            self._filter_banner.show(
+                Tone.OK, text, [("Limpar filtro", lambda: self._on_pick_cte(None))], icon="funnel", filled=False,
+            )
+        else:
+            self._filter_banner.set_text(text)  # same CT-e, new count: don't rebuild the banner
+
     def _update_counts(self) -> None:
+        """Chips and side panel. Called directly when something changed at once, or by the throttle."""
         if self._counts_job is not None:
             self.after_cancel(self._counts_job)
             self._counts_job = None
-        self.chips.set_counts(chip_counts(self._rows()))
+        rows = self._rows()
+        counts = chip_counts(rows)
+        self.chips.set_counts(counts)
+        self.panel.update_counts(
+            cte_counts(rows), with_cte=sum(self._multiplicity.values()), without_cte=counts["no_cte"],
+        )
+        if self._cte is not None:
+            self._set_cte(self._cte)  # rows of the picked CT-e may have arrived: keep the banner count right
 
     def destroy(self) -> None:
         if self._counts_job is not None:  # Voltar/Sair during a search
@@ -179,6 +229,7 @@ class SearchFrame(ctk.CTkFrame):
         self._results = {}
         self._multiplicity = {}
         self._chip = "all"
+        self._set_cte(None)
         self.chips.set_active("all")
         self._update_counts()
         self.table.clear()
@@ -291,7 +342,7 @@ class SearchFrame(ctk.CTkFrame):
         shared_cte = repeated != {cte: n for cte, n in self._multiplicity.items() if n > 1}
         self._multiplicity = multiplicity
 
-        matches = bool(visible_rows([r], self._chip))
+        matches = bool(visible_rows([r], self._chip, self._cte))
         if retried:
             # Same invoice queried again: update its row in place, or redraw if it enters/leaves the filter.
             if not (matches and self.table.update_row(r, multiplicity)):
@@ -319,7 +370,12 @@ class SearchFrame(ctk.CTkFrame):
             set_message(self.lbl_progress, status_text(len(self._results), len(failures), self._elapsed))
 
         self._update_counts()
-        if self._chip != "all" and not chip_counts(self._rows())[self._chip]:
+        if self._cte is not None:
+            if self._cte not in self._multiplicity:  # its invoices changed CT-e on "Tentar de novo"
+                self._on_pick_cte(None)
+            else:
+                self._set_cte(self._cte)  # the banner count may have changed
+        elif self._chip != "all" and not chip_counts(self._rows())[self._chip]:
             self._on_chip("all")  # e.g. every failure was fixed by "Tentar de novo"
         self._show_connection_banner()
         if self._results:

@@ -51,6 +51,7 @@ class FilterChips(ctk.CTkFrame):
         self._counts = {key: 0 for key in self._labels}
         self._active: str | None = "all"
         self._shown: dict[str, tuple[str | None, str | None]] = {}  # key -> (text, state) on screen
+        self._pinned: set[str] = set()  # chips with a fixed width (set on a state change)
 
         ctk.CTkLabel(
             self, text="Filtrar:", text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM),
@@ -94,8 +95,23 @@ class FilterChips(ctk.CTkFrame):
                 state = "normal"
 
             shown_text, shown_state = self._shown.get(key, (None, None))
+            if text != shown_text:
+                if key in self._pinned:  # the count changed: let a pinned chip size itself again
+                    self._pinned.discard(key)
+                    button.configure(text=text, width=0)
+                else:
+                    button.configure(text=text)  # text only: CTkButton doesn't redraw for it
             if state != shown_state:
-                button.configure(text=text, **_STATE_STYLES[state])
-            elif text != shown_text:
-                button.configure(text=text)
+                # While redrawing new colors, an auto-sized CTkButton shrinks to its minimum for a moment
+                # and every chip to its right jumps left and back. Pin the width it already has.
+                if shown_state is not None and text == shown_text:
+                    button.configure(width=self._width_on_screen(button), **_STATE_STYLES[state])
+                    self._pinned.add(key)
+                else:
+                    button.configure(**_STATE_STYLES[state])
             self._shown[key] = (text, state)
+
+    @staticmethod
+    def _width_on_screen(button: ctk.CTkButton) -> int:
+        """Width on screen, in the logical px that CTkButton(width=) takes."""
+        return round(button.winfo_width() / ctk.ScalingTracker.get_widget_scaling(button))

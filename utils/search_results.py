@@ -39,6 +39,17 @@ def cte_multiplicity(rows: list[Row]) -> dict[str, int]:
     return dict(Counter(r["CT-e"] for r in rows if r["CT-e"] not in _NO_CTE))
 
 
+def cte_counts(rows: list[Row]) -> list[tuple[str, int]]:
+    """CT-es of the query with how many invoices each one groups, most invoices first.
+    Ties follow the CT-e number, so the panel order doesn't change between redraws."""
+    def order(item: tuple[str, int]) -> tuple:
+        cte, count = item
+        number = (0, int(cte), "") if cte.isdigit() else (1, 0, cte)
+        return (-count, *number)
+
+    return sorted(cte_multiplicity(rows).items(), key=order)
+
+
 def _count(n: int, singular: str, plural: str) -> str:
     return f"{n:,}".replace(",", ".") + " " + (singular if n == 1 else plural)
 

@@ -24,12 +24,14 @@ ICONS = [
     "eye-off",
     "file-check",
     "file-search",
+    "funnel",
     "log-out",
     "rotate-cw",
     "search",
     "square",
     "upload",
     "wifi-off",
+    "x",
 ]
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
