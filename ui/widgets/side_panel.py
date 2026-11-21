@@ -276,7 +276,7 @@ class SidePanel(ctk.CTkFrame):
         self._hint.configure(
             text="Clique em um CT-e para filtrar a tabela" if is_cte else "Clique em um motorista para filtrar a tabela",
         )
-        self._empty.configure(text="Nenhum CT-e nesta consulta." if is_cte else "Nenhuma NF-e nesta consulta.")
+        self._empty.configure(text="Nenhum CT-e nesta consulta." if is_cte else "Nenhuma NF-e neste filtro.")
         shown, hidden = (self._cte_footer, self._drivers_footer) if is_cte else (self._drivers_footer, self._cte_footer)
         hidden.pack_forget()
         shown.pack(fill="x")
