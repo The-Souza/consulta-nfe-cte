@@ -1,11 +1,24 @@
+from datetime import date
+
 import pytest
 
-from utils.search_results import CHIPS, chip_counts, cte_counts, cte_multiplicity, status_text, visible_rows
+from utils.search_results import (
+    CHIPS,
+    NO_DRIVER,
+    NO_DRIVER_LABEL,
+    DriverGroup,
+    chip_counts,
+    cte_counts,
+    cte_multiplicity,
+    driver_groups,
+    status_text,
+    visible_rows,
+)
 from utils.status import CONNECTION_FAILED, SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
 
 
-def row(nfe, status=SEARCH_OK, cte="-", image="Sim"):
-    return {"NF-e": nfe, "CT-e": cte, "Imagem": image, "Status": status}
+def row(nfe, status=SEARCH_OK, cte="-", image="Sim", driver=NO_DRIVER, delivered=None):
+    return {"NF-e": nfe, "CT-e": cte, "Imagem": image, "Status": status, "Motorista": driver, "Entrega": delivered}
 
 
 ROWS = [
@@ -80,6 +93,70 @@ def test_cte_filter_ignores_the_chip():
 
 def test_cte_filter_with_unknown_cte_is_empty():
     assert visible_rows(ROWS, "all", cte="999") == []
+
+
+# drivers ----------------------------------------------------------------------------
+
+D12, D13, D14 = date(2026, 11, 12), date(2026, 11, 13), date(2026, 11, 14)
+
+DRIVER_ROWS = [
+    row(1, driver="Bia", delivered=D13, image="Não"),
+    row(2, driver="Ana", delivered=D14),
+    row(3, driver="Bia", delivered=D12),
+    row(4, SEARCH_NO_CTE, image="Não"),
+    row(5, driver="Bia", delivered=D13, image="Não"),
+    row(6, driver="Ana", delivered=None),
+    row(7, driver="Caio", delivered=D12),
+    row(8, SEARCH_NOT_FOUND),
+]
+
+
+def test_no_driver_label():
+    assert (NO_DRIVER, NO_DRIVER_LABEL) == ("", "Sem motorista na planilha")
+
+
+def test_driver_groups_count_and_unique_sorted_dates():
+    groups = driver_groups(DRIVER_ROWS)
+
+    assert groups[0] == DriverGroup("Bia", 3, [D12, D13])
+    assert groups[1] == DriverGroup("Ana", 2, [D14])
+
+
+def test_driver_groups_order_by_count_then_name_with_no_driver_last():
+    assert [(g.driver, g.count) for g in driver_groups(DRIVER_ROWS)] == [
+        ("Bia", 3), ("Ana", 2), ("Caio", 1), (NO_DRIVER, 2),
+    ]
+
+
+def test_no_driver_stays_last_even_when_it_is_the_largest():
+    rows = [row(n) for n in range(1, 6)] + [row(9, driver="Ana")]
+
+    assert [g.driver for g in driver_groups(rows)] == ["Ana", NO_DRIVER]
+
+
+def test_driver_name_ties_ignore_case():
+    rows = [row(1, driver="bruno"), row(2, driver="Ana"), row(3, driver="Carla")]
+
+    assert [g.driver for g in driver_groups(rows)] == ["Ana", "bruno", "Carla"]
+
+
+def test_driver_groups_without_rows():
+    assert driver_groups([]) == []
+
+
+def test_driver_filter_combines_with_the_chip():
+    assert nfes(visible_rows(DRIVER_ROWS, "all", driver="Bia")) == [1, 3, 5]
+    assert nfes(visible_rows(DRIVER_ROWS, "no_image", driver="Bia")) == [1, 5]
+
+
+def test_no_driver_filter_shows_rows_outside_the_sheet():
+    assert nfes(visible_rows(DRIVER_ROWS, "all", driver=NO_DRIVER)) == [4, 8]
+
+
+def test_cte_filter_takes_precedence_over_the_driver():
+    rows = [row(1, cte="100", driver="Ana"), row(2, cte="100", driver="Bia")]
+
+    assert nfes(visible_rows(rows, "all", cte="100", driver="Ana")) == [1, 2]
 
 
 # multiplicity -----------------------------------------------------------------------

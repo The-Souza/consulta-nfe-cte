@@ -4,7 +4,7 @@ from typing import Callable
 
 import customtkinter as ctk
 
-from drivers import DriverLookup
+from drivers import DriverLookup, sheet_status
 from ui import theme
 from ui.icons import get_icon
 from ui.widgets.banner import Banner
@@ -67,8 +67,14 @@ class SearchFrame(ctk.CTkFrame):
         main = ctk.CTkFrame(self, fg_color=theme.TRANSPARENT)
         main.pack(fill="both", expand=True, padx=20, pady=(theme.SPACE_LG, 14))
         self._build_search_row(main)
-        self.chips = FilterChips(main, on_pick=self._on_chip)
-        self.chips.pack(fill="x", pady=(theme.SPACE_MD, 0))
+        chips_row = ctk.CTkFrame(main, fg_color=theme.TRANSPARENT)
+        chips_row.pack(fill="x", pady=(theme.SPACE_MD, 0))
+        self.chips = FilterChips(chips_row, on_pick=self._on_chip)
+        self.chips.pack(side="left", fill="x", expand=True)
+        # Packed on the right only while there is something to say (see _show_sheet_status)
+        self.lbl_sheet = ctk.CTkLabel(
+            chips_row, text="", compound="left", font=theme.font(theme.FONT_SIZE_SM), text_color=theme.TEXT_MUTED,
+        )
         self._build_footer(main)  # packed before the card so the card takes the remaining height
         self._build_card(main)
 
@@ -229,6 +235,7 @@ class SearchFrame(ctk.CTkFrame):
         self._results = {}
         self._multiplicity = {}
         self._drivers = None
+        self._show_sheet_status()
         self._chip = "all"
         self._set_cte(None)
         self.chips.set_active("all")
@@ -296,6 +303,11 @@ class SearchFrame(ctk.CTkFrame):
         def finish(**kwargs):
             return lambda *_: self._finish(query, retry=retry, **kwargs)
 
+        # After a failed lookup, a retry reads Supabase again for the retried invoices only: those rows get
+        # their driver, the others don't. Keep the failed lookup on screen (label and history), so the label
+        # stays "indisponíveis" and the next retry reads again.
+        partial_lookup = retry and self._drivers is not None and self._drivers.state == "failed"
+
         worker = SearchWorker(
             session=self._session,
             invoices=invoices,
@@ -307,7 +319,7 @@ class SearchFrame(ctk.CTkFrame):
                 on_done=finish(),
                 on_cancel=finish(cancelled=True),
                 on_session_lost=finish(session_lost=True),
-                on_drivers=self._set_drivers,
+                on_drivers=(lambda _lookup: None) if partial_lookup else self._set_drivers,
             ),
             relogin=self._relogin,
             drivers=self._drivers if retry else None,
@@ -319,6 +331,17 @@ class SearchFrame(ctk.CTkFrame):
 
     def _set_drivers(self, lookup: DriverLookup) -> None:
         self._drivers = lookup
+        self._show_sheet_status()
+
+    def _show_sheet_status(self) -> None:
+        status = sheet_status(self._drivers, datetime.now().astimezone())
+        if status is None:
+            self.lbl_sheet.pack_forget()
+            return
+        text, warning = status
+        color = theme.STATUS[Tone.WARNING.value][0] if warning else theme.TEXT_MUTED
+        self.lbl_sheet.configure(text=f" {text}", text_color=color, image=get_icon("cloud", 14, color))
+        self.lbl_sheet.pack(side="right", before=self.chips)
 
     def _add_row(self, r: dict, prog: float, current: int, total: int, elapsed: float) -> None:
         self.progressbar.set(prog)
@@ -444,6 +467,7 @@ class SearchFrame(ctk.CTkFrame):
         self._results = {r["NF-e"]: r for r in entry["results"]}
         self._multiplicity = cte_multiplicity(self._rows())
         self._drivers = entry["drivers"]
+        self._show_sheet_status()
         self._current_entry = entry
         self._elapsed = 0.0  # the restored search's time isn't kept; a retry counts from zero
         self._render()

@@ -68,6 +68,18 @@ def get_drivers_by_cte(ctes: Iterable[int], session: requests.Session | None = N
     return _lookup(read, session)
 
 
+def sheet_status(lookup: DriverLookup | None, now: datetime) -> tuple[str, bool] | None:
+    """Text shown beside the chips and whether it is a warning. None hides it (Supabase not configured,
+    or no lookup yet)."""
+    if lookup is None or lookup.state == "off":
+        return None
+    if lookup.state == "failed":
+        return "Motoristas e datas indisponíveis", True
+    if lookup.updated_at is None:
+        return "Motoristas e datas: planilha vazia", False
+    return f"Motoristas e datas: {sheet_label(lookup.updated_at, now)}", False
+
+
 def sheet_label(updated_at: datetime | None, now: datetime) -> str:
     if updated_at is None:
         return ""
