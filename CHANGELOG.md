@@ -11,6 +11,12 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 - Excel: colunas Motorista e Entrega na aba "Consulta".
 - Configuração opcional `SUPABASE_URL` e `SUPABASE_ANON_KEY` no `.env`, e o SQL da tabela em `supabase/001_entregas.sql`. Sem elas, ou com o Supabase fora do ar, a consulta funciona normalmente.
 
+### Alterado
+- Consulta: o limite passa de 5.000 para 200 NF-es por consulta, contando só as diferentes. Uma lista colada com repetidas não é mais recusada por causa delas.
+
+### Removido
+- Consulta: a confirmação acima de 500 NF-es.
+
 ## [2.0.0-alpha.2] — 2026-11-19
 
 ### Adicionado
