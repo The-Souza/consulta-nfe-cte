@@ -19,6 +19,7 @@ ICONS = [
     "chevron-down",
     "chevron-left",
     "chevron-right",
+    "cloud",
     "download",
     "eye",
     "eye-off",
