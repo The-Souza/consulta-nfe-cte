@@ -183,15 +183,21 @@ class SearchFrame(ctk.CTkFrame):
         self.table.show(rows, self._multiplicity, _EMPTY_FILTER if self._results else "")
 
     def _on_chip(self, key: str) -> None:
-        """A chip clears the CT-e but keeps the driver (as in the design: "Sem imagem" of one driver), unless
-        the driver has no invoice under the new chip: it would leave the panel list and the table empty."""
+        """A chip clears the CT-e but keeps the driver (as in the design: "Sem imagem" of one driver)."""
         self._chip = key
         self._set_cte(None)
-        if self._driver is not None and not visible_rows(self._rows(), key, driver=self._driver):
-            self._set_driver(None)
+        self._drop_empty_driver()
         self.chips.set_active(key)
         self._update_counts()  # the drivers tab groups the rows of the active chip
         self._render()
+
+    def _drop_empty_driver(self) -> bool:
+        """A driver with no invoice under the active chip would leave the table empty and drop out of the
+        panel list, where it could no longer be clicked off. True when the filter was cleared."""
+        if self._driver is not None and not visible_rows(self._rows(), self._chip, driver=self._driver):
+            self._set_driver(None)
+            return True
+        return False
 
     def _on_pick_no_cte(self) -> None:
         """'NF-es sem CT-e' link in the panel: same as the chip, so it does nothing when the count is 0."""
@@ -447,6 +453,8 @@ class SearchFrame(ctk.CTkFrame):
                 self._set_cte(self._cte)  # the banner count may have changed
         elif self._chip != "all" and not chip_counts(self._rows())[self._chip]:
             self._on_chip("all")  # e.g. every failure was fixed by "Tentar de novo"
+        if self._drop_empty_driver():  # e.g. "Sem motorista" rows got a driver from their CT-e at the end
+            self._render()
         self._show_connection_banner()
         if self._results:
             self.btn_export.configure(state="normal")

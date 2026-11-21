@@ -39,6 +39,11 @@ def hide_when_idle(
     return command
 
 
+def use_theme_width(frame: ctk.CTkScrollableFrame) -> None:
+    """CTkScrollableFrame has no width option for its scrollbar (default 16): match the results table's."""
+    frame._scrollbar.configure(width=theme.SCROLLBAR_WIDTH)
+
+
 def hide_frame_scrollbar_when_idle(frame: ctk.CTkScrollableFrame) -> None:
     # CTkScrollableFrame has no public hook for its scrollbar: rewire the canvas it scrolls
     bar = frame._scrollbar

@@ -4,12 +4,13 @@ from typing import Callable
 import customtkinter as ctk
 
 from ui import theme
-from ui.widgets.scrollbar import hide_frame_scrollbar_when_idle
+from ui.widgets.scrollbar import hide_frame_scrollbar_when_idle, use_theme_width
 from utils.search_results import NO_DRIVER, NO_DRIVER_LABEL, DriverGroup
 from utils.status import Tone
 
 MAX_ITEMS = 50  # a query can have many CT-es; the panel shows the largest ones
 _WIDTH = 300
+_DETAIL_WRAP = _WIDTH - 60  # item padding, list padding and the scrollbar
 _TITLE_CHARS = 22  # a CTkLabel can't ellipsize: longer driver names are cut by hand, clear of the count
 
 CTE_TAB = "cte"
@@ -48,8 +49,9 @@ class _PanelItem(ctk.CTkFrame):
         self._count = ctk.CTkLabel(top, text="", text_color=theme.TEXT_LABEL, height=18,
                                    font=theme.font(theme.FONT_SIZE_SM))
         self._count.pack(side="right")
-        self._detail = ctk.CTkLabel(self, text="", text_color=theme.TEXT_MUTED, height=16, anchor="w",
-                                    font=theme.font(theme.FONT_SIZE_SM, mono=True))
+        # Many delivery days don't fit in one line: wrap instead of cutting the last dates off
+        self._detail = ctk.CTkLabel(self, text="", text_color=theme.TEXT_MUTED, height=16, anchor="w", justify="left",
+                                    font=theme.font(theme.FONT_SIZE_SM, mono=True), wraplength=_DETAIL_WRAP)
         self._bar = ctk.CTkProgressBar(self, height=6, corner_radius=3, fg_color=theme.SURFACE_2)
         self._bar.pack(fill="x", padx=theme.SPACE_MD, pady=(0, theme.SPACE_SM + 2))
 
@@ -133,6 +135,7 @@ class SidePanel(ctk.CTkFrame):
         )
         self._list.pack(fill="both", expand=True, padx=theme.SPACE_XS, pady=theme.SPACE_XS)
         hide_frame_scrollbar_when_idle(self._list)
+        use_theme_width(self._list)
         self._more = ctk.CTkLabel(self._list, text="", text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM))
         self._empty = ctk.CTkLabel(self._list, text="", text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM))
         self._cte_footer = self._build_cte_footer(on_pick_no_cte)
