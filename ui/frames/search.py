@@ -9,7 +9,7 @@ from ui import theme
 from ui.icons import get_icon
 from ui.widgets.banner import Banner
 from ui.widgets.buttons import restore_button, show_cancel
-from ui.widgets.cte_panel import CtePanel
+from ui.widgets.side_panel import SidePanel
 from ui.widgets.filter_chips import FilterChips
 from ui.widgets.history import HistoryPanel
 from ui.widgets.progress import set_message
@@ -18,7 +18,7 @@ from ui.widgets.topbar import make_topbar
 from ui.workers.search import SearchCallbacks, SearchWorker
 from utils.excel import export_excel
 from utils.nfe_query import parse_query
-from utils.search_results import chip_counts, cte_counts, cte_multiplicity, status_text, visible_rows
+from utils.search_results import chip_counts, cte_counts, cte_multiplicity, driver_groups, status_text, visible_rows
 from utils.status import CONNECTION_FAILED, Tone
 
 _HISTORY_QUERY_CHARS = 40
@@ -126,7 +126,10 @@ class SearchFrame(ctk.CTkFrame):
     def _build_card(self, main: ctk.CTkFrame) -> None:
         content = ctk.CTkFrame(main, fg_color=theme.TRANSPARENT)
         content.pack(fill="both", expand=True, pady=(theme.SPACE_MD, theme.SPACE_MD))
-        self.panel = CtePanel(content, on_pick_cte=self._on_pick_cte, on_pick_no_cte=self._on_pick_no_cte)
+        self.panel = SidePanel(
+            content, on_pick_cte=self._on_pick_cte, on_pick_no_cte=self._on_pick_no_cte,
+            on_pick_driver=lambda driver: self.panel.select_driver(driver), on_tab=lambda _tab: None,
+        )
         self.panel.pack(side="right", fill="y", padx=(theme.SPACE_LG, 0))
         card = ctk.CTkFrame(
             content, fg_color=theme.SURFACE, border_color=theme.BORDER, border_width=1, corner_radius=theme.RADIUS_CARD,
@@ -193,7 +196,7 @@ class SearchFrame(ctk.CTkFrame):
     def _set_cte(self, cte: str | None) -> None:
         changed = cte != self._cte
         self._cte = cte
-        self.panel.select(cte)
+        self.panel.select_cte(cte)
         if cte is None:
             self._filter_banner.hide()
             return
@@ -215,7 +218,8 @@ class SearchFrame(ctk.CTkFrame):
         counts = chip_counts(rows)
         self.chips.set_counts(counts)
         self.panel.update_counts(
-            cte_counts(rows), with_cte=sum(self._multiplicity.values()), without_cte=counts["no_cte"],
+            cte_counts(rows), driver_groups(rows), with_cte=sum(self._multiplicity.values()),
+            without_cte=counts["no_cte"],
         )
         if self._cte is not None:
             self._set_cte(self._cte)  # rows of the picked CT-e may have arrived: keep the banner count right
@@ -334,6 +338,8 @@ class SearchFrame(ctk.CTkFrame):
         self._show_sheet_status()
 
     def _show_sheet_status(self) -> None:
+        """Text beside the chips and the Motoristas tab, both following the drivers lookup."""
+        self.panel.show_drivers_tab(self._drivers is not None and self._drivers.state != "off")
         status = sheet_status(self._drivers, datetime.now().astimezone())
         if status is None:
             self.lbl_sheet.pack_forget()
