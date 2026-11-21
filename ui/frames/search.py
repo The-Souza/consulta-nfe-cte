@@ -303,6 +303,11 @@ class SearchFrame(ctk.CTkFrame):
         def finish(**kwargs):
             return lambda *_: self._finish(query, retry=retry, **kwargs)
 
+        # After a failed lookup, a retry reads Supabase again for the retried invoices only: those rows get
+        # their driver, the others don't. Keep the failed lookup on screen (label and history), so the label
+        # stays "indisponíveis" and the next retry reads again.
+        partial_lookup = retry and self._drivers is not None and self._drivers.state == "failed"
+
         worker = SearchWorker(
             session=self._session,
             invoices=invoices,
@@ -314,7 +319,7 @@ class SearchFrame(ctk.CTkFrame):
                 on_done=finish(),
                 on_cancel=finish(cancelled=True),
                 on_session_lost=finish(session_lost=True),
-                on_drivers=self._set_drivers,
+                on_drivers=(lambda _lookup: None) if partial_lookup else self._set_drivers,
             ),
             relogin=self._relogin,
             drivers=self._drivers if retry else None,
