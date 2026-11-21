@@ -7,7 +7,9 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 ## [2.0.0-alpha.3] — em andamento
 
 ### Adicionado
-- Consulta: motorista e data de entrega de cada NF-e, lidos de uma tabela no Supabase (só leitura). Quando o carregamento foi lançado com um XML único e a NF-e não está na tabela, o motorista vem pelo CT-e.
+- Consulta: motorista e data de entrega de cada NF-e, lidos de uma tabela no Supabase (só leitura) e mostrados nas colunas Motorista e Entrega. Quando o carregamento foi lançado com um XML único e a NF-e não está na tabela, o motorista vem pelo CT-e.
+- Consulta: ao lado dos chips, de quando é a planilha de motoristas ("Motoristas e datas: planilha de hoje, 14:20"), ou "Motoristas e datas indisponíveis" quando a leitura falha.
+- Consulta: o painel lateral ganha as abas CT-es | Motoristas. A aba Motoristas mostra as NF-es de cada motorista, com as datas de entrega e as sem motorista por último; clicar num motorista filtra a tabela ("Mostrando N NF-es de X · Limpar filtro"), junto com o chip ativo.
 - Excel: colunas Motorista e Entrega na aba "Consulta".
 - Configuração opcional `SUPABASE_URL` e `SUPABASE_ANON_KEY` no `.env`, e o SQL da tabela em `supabase/001_entregas.sql`. Sem elas, ou com o Supabase fora do ar, a consulta funciona normalmente.
 
@@ -16,6 +18,9 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ### Removido
 - Consulta: a confirmação acima de 500 NF-es.
+
+### Corrigido
+- A barra de rolagem da tabela da Consulta, do painel lateral, do histórico e da lista do Upload só aparece quando há o que rolar.
 
 ## [2.0.0-alpha.2] — 2026-11-19
 
