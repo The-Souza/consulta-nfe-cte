@@ -108,6 +108,18 @@ def test_above_maximum_is_refused():
     assert parsed.label == "Máximo de 200 NF-es por consulta"
 
 
+def test_single_range_above_maximum_is_refused():
+    parsed = parse_query("1-201")
+
+    assert not parsed.valid
+    assert parsed.label == "Máximo de 200 NF-es por consulta"
+
+
+@pytest.mark.parametrize(("text", "valid"), [("1-150, 100-200", True), ("1-150, 100-201", False)])
+def test_overlapping_ranges_count_unique_invoices(text, valid):
+    assert parse_query(text).valid is valid
+
+
 def test_repeated_numbers_count_once_toward_the_limit():
     parsed = parse_query("1-200, 5, 200")
 
