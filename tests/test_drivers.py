@@ -7,7 +7,7 @@ import requests
 import responses
 
 import drivers
-from drivers import Delivery, DriverLookup, get_drivers, get_drivers_by_cte, sheet_label
+from drivers import Delivery, DriverLookup, get_drivers, get_drivers_by_cte, sheet_label, sheet_status
 
 BASE = "https://project.supabase.test"
 URL = f"{BASE}/rest/v1/entregas"
@@ -344,3 +344,19 @@ def test_sheet_label(updated_at, now, expected):
 
 def test_sheet_label_without_updated_at_is_empty():
     assert sheet_label(None, NOW) == ""
+
+
+# sheet_status (text beside the chips) ---------------------------------------------
+
+@pytest.mark.parametrize(
+    ("lookup", "expected"),
+    [
+        (None, None),
+        (DriverLookup({}, None, "off"), None),
+        (DriverLookup({}, None, "failed"), ("Motoristas e datas indisponíveis", True)),
+        (DriverLookup({}, datetime(2026, 11, 19, 14, 20), "ok"), ("Motoristas e datas: planilha de hoje, 14:20", False)),
+        (DriverLookup({}, None, "ok"), ("Motoristas e datas: planilha vazia", False)),
+    ],
+)
+def test_sheet_status(lookup, expected):
+    assert sheet_status(lookup, NOW) == expected

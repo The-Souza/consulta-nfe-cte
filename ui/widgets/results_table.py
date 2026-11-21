@@ -57,6 +57,10 @@ def _image_text(value) -> str:
     return value if value in ("Sim", "Não") else _DASH
 
 
+def _delivery_text(delivery) -> str:
+    return delivery.strftime("%d/%m") if delivery else _DASH
+
+
 def _cte_text(cte: str, multiplicity: dict[str, int]) -> str:
     if cte in ("-", ""):
         return _DASH
@@ -110,7 +114,7 @@ class ResultsTable(ctk.CTkFrame):
     def _values(self, number: int, row: dict, multiplicity: dict[str, int]) -> tuple:
         return (
             number, row["NF-e"], _cte_text(row["CT-e"], multiplicity), _image_text(row.get("Imagem")),
-            _DASH, _DASH, row["Status"],
+            row["Motorista"] or _DASH, _delivery_text(row["Entrega"]), row["Status"],
         )
 
     @staticmethod
