@@ -1,15 +1,20 @@
 """Filters, counts and texts of the search screen, kept out of the UI so they can be tested.
 
-A result row is the dict built by the search worker: {"NF-e", "CT-e", "Imagem", "Status"}.
+A result row is the dict built by the search worker: {"NF-e", "CT-e", "Imagem", "Status", "Motorista", "Entrega"}.
 """
 
-from collections import Counter
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from datetime import date
 from typing import Callable
 
 from utils.status import CONNECTION_FAILED, SEARCH_NO_CTE, SEARCH_NOT_FOUND, SEARCH_OK
 
 Row = dict
 _NO_CTE = ("-", "")
+
+NO_DRIVER = ""  # "Motorista" of an invoice that isn't in the drivers sheet
+NO_DRIVER_LABEL = "Sem motorista na planilha"
 
 CHIPS: list[tuple[str, str, Callable[[Row], bool]]] = [
     ("all",        "Todos",            lambda r: True),
@@ -26,12 +31,33 @@ def chip_counts(rows: list[Row]) -> dict[str, int]:
     return {key: sum(1 for r in rows if predicate(r)) for key, predicate in _PREDICATES.items()}
 
 
-def visible_rows(rows: list[Row], chip: str, cte: str | None = None) -> list[Row]:
-    """Rows shown in the table, in query order. A selected CT-e takes precedence over the chip."""
+def visible_rows(rows: list[Row], chip: str, cte: str | None = None, driver: str | None = None) -> list[Row]:
+    """Rows shown in the table, in query order. A selected CT-e takes precedence over the chip;
+    a selected driver narrows the chip (NO_DRIVER picks the invoices outside the sheet)."""
     if cte is not None:
         return [r for r in rows if r["CT-e"] == cte]
     predicate = _PREDICATES[chip]
-    return [r for r in rows if predicate(r)]
+    return [r for r in rows if predicate(r) and (driver is None or r["Motorista"] == driver)]
+
+
+@dataclass(frozen=True)
+class DriverGroup:
+    driver: str
+    count: int
+    dates: list[date] = field(default_factory=list)  # unique delivery dates, in order
+
+
+def driver_groups(rows: list[Row]) -> list[DriverGroup]:
+    """Invoices per driver for the side panel: most invoices first, ties by name, and the invoices
+    outside the sheet always last."""
+    counts: Counter[str] = Counter()
+    dates: dict[str, set[date]] = defaultdict(set)
+    for r in rows:
+        counts[r["Motorista"]] += 1
+        if r["Entrega"]:
+            dates[r["Motorista"]].add(r["Entrega"])
+    groups = [DriverGroup(driver, count, sorted(dates[driver])) for driver, count in counts.items()]
+    return sorted(groups, key=lambda g: (g.driver == NO_DRIVER, -g.count, g.driver.casefold()))
 
 
 def cte_multiplicity(rows: list[Row]) -> dict[str, int]:
