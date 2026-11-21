@@ -60,6 +60,15 @@ def driver_groups(rows: list[Row]) -> list[DriverGroup]:
     return sorted(groups, key=lambda g: (g.driver == NO_DRIVER, -g.count, g.driver.casefold()))
 
 
+def driver_filter_text(count: int, driver: str, chip: str) -> str:
+    """Filter bar above the table while a driver is picked in the side panel."""
+    shown = f"Mostrando {_count(count, 'NF-e', 'NF-es')}"
+    no_image = chip == "no_image"
+    if driver == NO_DRIVER:
+        return f"{shown} {'sem imagem e ' if no_image else ''}sem motorista na planilha"
+    return f"{shown} de {driver}{' sem imagem' if no_image else ''}"
+
+
 def cte_multiplicity(rows: list[Row]) -> dict[str, int]:
     """How many invoices of the query share each CT-e (for the "×N" mark)."""
     return dict(Counter(r["CT-e"] for r in rows if r["CT-e"] not in _NO_CTE))
