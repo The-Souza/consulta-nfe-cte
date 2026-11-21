@@ -183,9 +183,12 @@ class SearchFrame(ctk.CTkFrame):
         self.table.show(rows, self._multiplicity, _EMPTY_FILTER if self._results else "")
 
     def _on_chip(self, key: str) -> None:
-        """A chip clears the CT-e but keeps the driver (as in the design: "Sem imagem" of one driver)."""
+        """A chip clears the CT-e but keeps the driver (as in the design: "Sem imagem" of one driver), unless
+        the driver has no invoice under the new chip: it would leave the panel list and the table empty."""
         self._chip = key
         self._set_cte(None)
+        if self._driver is not None and not visible_rows(self._rows(), key, driver=self._driver):
+            self._set_driver(None)
         self.chips.set_active(key)
         self._update_counts()  # the drivers tab groups the rows of the active chip
         self._render()
@@ -383,7 +386,9 @@ class SearchFrame(ctk.CTkFrame):
 
     def _show_sheet_status(self) -> None:
         """Text beside the chips and the Motoristas tab, both following the drivers lookup."""
-        self.panel.show_drivers_tab(self._drivers is not None and self._drivers.state != "off")
+        # Only after a successful read: with a failed one, every invoice would be listed as "Sem motorista na
+        # planilha", which reads as "missing from the sheet" while the sheet just couldn't be read.
+        self.panel.show_drivers_tab(self._drivers is not None and self._drivers.state == "ok")
         status = sheet_status(self._drivers, datetime.now().astimezone())
         if status is None:
             self.lbl_sheet.pack_forget()

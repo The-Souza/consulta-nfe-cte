@@ -109,6 +109,7 @@ class SidePanel(ctk.CTkFrame):
         self._on_pick_driver = on_pick_driver
         self._on_tab = on_tab
         self._tab = CTE_TAB
+        self._preferred_tab = CTE_TAB  # last tab the user picked; shown again when the drivers tab returns
         self._selected_cte: str | None = None
         self._selected_driver: str | None = None
         self._ctes: list[tuple[str, int]] = []
@@ -216,20 +217,19 @@ class SidePanel(ctk.CTkFrame):
         return self._tab
 
     def show_drivers_tab(self, visible: bool) -> None:
-        """The Motoristas tab only exists while the drivers lookup is on."""
-        if visible and not self._tabs_row.winfo_manager():
-            self._tabs_row.pack(fill="x", padx=theme.SPACE_MD, pady=(theme.SPACE_MD, 0), before=self._header)
-        elif not visible:
+        """The Motoristas tab only exists while there is a drivers lookup. It hides at every new search
+        until the lookup arrives, so the tab the user picked is remembered and comes back with it."""
+        if visible:
+            if not self._tabs_row.winfo_manager():
+                self._tabs_row.pack(fill="x", padx=theme.SPACE_MD, pady=(theme.SPACE_MD, 0), before=self._header)
+            self._switch(self._preferred_tab)
+        else:
             self._tabs_row.pack_forget()
-            if self._tab == DRIVERS_TAB:
-                self.show_tab(CTE_TAB)
+            self._switch(CTE_TAB)
 
     def show_tab(self, tab: str) -> None:
-        if tab == self._tab:
-            return
-        self._tab = tab
-        self._tabs.set(_TAB_NAMES[tab])
-        self._apply_tab()
+        self._preferred_tab = tab
+        self._switch(tab)
 
     def update_counts(self, ctes: list[tuple[str, int]], drivers: list[DriverGroup], with_cte: int,
                       without_cte: int) -> None:
@@ -255,10 +255,17 @@ class SidePanel(ctk.CTkFrame):
 
     def _on_tab_click(self, name: str) -> None:
         tab = next(key for key, label in _TAB_NAMES.items() if label == name)
+        self._preferred_tab = tab
         if tab != self._tab:
-            self._tab = tab
-            self._apply_tab()
+            self._switch(tab)
             self._on_tab(tab)
+
+    def _switch(self, tab: str) -> None:
+        if tab == self._tab:
+            return
+        self._tab = tab
+        self._tabs.set(_TAB_NAMES[tab])
+        self._apply_tab()
 
     def _apply_tab(self) -> None:
         is_cte = self._tab == CTE_TAB
