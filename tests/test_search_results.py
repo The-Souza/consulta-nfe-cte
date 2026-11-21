@@ -10,6 +10,7 @@ from utils.search_results import (
     chip_counts,
     cte_counts,
     cte_multiplicity,
+    driver_filter_text,
     driver_groups,
     status_text,
     visible_rows,
@@ -157,6 +158,21 @@ def test_cte_filter_takes_precedence_over_the_driver():
     rows = [row(1, cte="100", driver="Ana"), row(2, cte="100", driver="Bia")]
 
     assert nfes(visible_rows(rows, "all", cte="100", driver="Ana")) == [1, 2]
+
+
+@pytest.mark.parametrize(
+    ("count", "driver", "chip", "expected"),
+    [
+        (3, "Ana", "all", "Mostrando 3 NF-es de Ana"),
+        (1, "Ana", "ok", "Mostrando 1 NF-e de Ana"),
+        (2, "Ana", "no_image", "Mostrando 2 NF-es de Ana sem imagem"),
+        (4, NO_DRIVER, "all", "Mostrando 4 NF-es sem motorista na planilha"),
+        (1, NO_DRIVER, "no_image", "Mostrando 1 NF-e sem imagem e sem motorista na planilha"),
+        (0, "Ana", "connection", "Mostrando 0 NF-es de Ana"),
+    ],
+)
+def test_driver_filter_text(count, driver, chip, expected):
+    assert driver_filter_text(count, driver, chip) == expected
 
 
 # multiplicity -----------------------------------------------------------------------

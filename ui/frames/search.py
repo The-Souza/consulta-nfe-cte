@@ -9,7 +9,7 @@ from ui import theme
 from ui.icons import get_icon
 from ui.widgets.banner import Banner
 from ui.widgets.buttons import restore_button, show_cancel
-from ui.widgets.cte_panel import CtePanel
+from ui.widgets.side_panel import SidePanel
 from ui.widgets.filter_chips import FilterChips
 from ui.widgets.history import HistoryPanel
 from ui.widgets.progress import set_message
@@ -18,7 +18,15 @@ from ui.widgets.topbar import make_topbar
 from ui.workers.search import SearchCallbacks, SearchWorker
 from utils.excel import export_excel
 from utils.nfe_query import parse_query
-from utils.search_results import chip_counts, cte_counts, cte_multiplicity, status_text, visible_rows
+from utils.search_results import (
+    chip_counts,
+    cte_counts,
+    cte_multiplicity,
+    driver_filter_text,
+    driver_groups,
+    status_text,
+    visible_rows,
+)
 from utils.status import CONNECTION_FAILED, Tone
 
 _HISTORY_QUERY_CHARS = 40
@@ -45,6 +53,7 @@ class SearchFrame(ctk.CTkFrame):
         self._results: dict[int, dict] = {}  # NF-e -> row, in query order
         self._chip = "all"
         self._cte: str | None = None  # CT-e picked in the side panel; takes precedence over the chip
+        self._driver: str | None = None  # driver picked in the side panel; narrows the chip, never with _cte
         self._multiplicity: dict[str, int] = {}
         self._current_entry: dict | None = None  # history entry of the results on screen
         self._drivers: DriverLookup | None = None  # Supabase lookup of the results on screen
@@ -126,7 +135,10 @@ class SearchFrame(ctk.CTkFrame):
     def _build_card(self, main: ctk.CTkFrame) -> None:
         content = ctk.CTkFrame(main, fg_color=theme.TRANSPARENT)
         content.pack(fill="both", expand=True, pady=(theme.SPACE_MD, theme.SPACE_MD))
-        self.panel = CtePanel(content, on_pick_cte=self._on_pick_cte, on_pick_no_cte=self._on_pick_no_cte)
+        self.panel = SidePanel(
+            content, on_pick_cte=self._on_pick_cte, on_pick_no_cte=self._on_pick_no_cte,
+            on_pick_driver=self._on_pick_driver, on_tab=lambda _tab: None,
+        )
         self.panel.pack(side="right", fill="y", padx=(theme.SPACE_LG, 0))
         card = ctk.CTkFrame(
             content, fg_color=theme.SURFACE, border_color=theme.BORDER, border_width=1, corner_radius=theme.RADIUS_CARD,
@@ -167,14 +179,25 @@ class SearchFrame(ctk.CTkFrame):
 
     def _render(self) -> None:
         """Redraw the table for the active filter (the Treeview handles hundreds of rows quickly)."""
-        rows = visible_rows(self._rows(), self._chip, self._cte)
+        rows = visible_rows(self._rows(), self._chip, self._cte, self._driver)
         self.table.show(rows, self._multiplicity, _EMPTY_FILTER if self._results else "")
 
     def _on_chip(self, key: str) -> None:
+        """A chip clears the CT-e but keeps the driver (as in the design: "Sem imagem" of one driver)."""
         self._chip = key
         self._set_cte(None)
+        self._drop_empty_driver()
         self.chips.set_active(key)
+        self._update_counts()  # the drivers tab groups the rows of the active chip
         self._render()
+
+    def _drop_empty_driver(self) -> bool:
+        """A driver with no invoice under the active chip would leave the table empty and drop out of the
+        panel list, where it could no longer be clicked off. True when the filter was cleared."""
+        if self._driver is not None and not visible_rows(self._rows(), self._chip, driver=self._driver):
+            self._set_driver(None)
+            return True
+        return False
 
     def _on_pick_no_cte(self) -> None:
         """'NF-es sem CT-e' link in the panel: same as the chip, so it does nothing when the count is 0."""
@@ -186,16 +209,45 @@ class SearchFrame(ctk.CTkFrame):
         Picking a CT-e resets the chip to "Todos", so clearing the CT-e shows every invoice again."""
         if cte is not None:
             self._chip = "all"
+            self._set_driver(None)
         self._set_cte(cte)
         self.chips.set_active(None if cte else self._chip)
+        self._update_counts()
         self._render()
+
+    def _on_pick_driver(self, driver: str | None) -> None:
+        """Click in the Motoristas tab: filter the table by that driver within the active chip, or clear
+        it (same driver again). A picked CT-e is cleared first: the two filters don't combine."""
+        if driver is not None and self._cte is not None:
+            self._set_cte(None)
+            self.chips.set_active(self._chip)
+        self._set_driver(driver)
+        self._render()
+
+    def _set_driver(self, driver: str | None) -> None:
+        changed = driver != self._driver
+        self._driver = driver
+        self.panel.select_driver(driver)
+        if driver is None:
+            if self._cte is None:
+                self._filter_banner.hide()
+            return
+        count = len(visible_rows(self._rows(), self._chip, driver=driver))
+        text = driver_filter_text(count, driver, self._chip)
+        if changed or not self._filter_banner.visible:
+            self._filter_banner.show(
+                Tone.OK, text, [("Limpar filtro", lambda: self._on_pick_driver(None))], icon="funnel", filled=False,
+            )
+        else:
+            self._filter_banner.set_text(text)  # same driver, new count or chip: don't rebuild the banner
 
     def _set_cte(self, cte: str | None) -> None:
         changed = cte != self._cte
         self._cte = cte
-        self.panel.select(cte)
+        self.panel.select_cte(cte)
         if cte is None:
-            self._filter_banner.hide()
+            if self._driver is None:
+                self._filter_banner.hide()
             return
         count = self._multiplicity.get(cte, 0)
         text = f"Mostrando as {count} NF-es do CT-e {cte}" if count != 1 else f"Mostrando 1 NF-e do CT-e {cte}"
@@ -215,10 +267,14 @@ class SearchFrame(ctk.CTkFrame):
         counts = chip_counts(rows)
         self.chips.set_counts(counts)
         self.panel.update_counts(
-            cte_counts(rows), with_cte=sum(self._multiplicity.values()), without_cte=counts["no_cte"],
+            cte_counts(rows), driver_groups(visible_rows(rows, self._chip)), with_cte=sum(self._multiplicity.values()),
+            without_cte=counts["no_cte"],
         )
+        # Rows of the picked CT-e or driver may have arrived: keep the banner count right
         if self._cte is not None:
-            self._set_cte(self._cte)  # rows of the picked CT-e may have arrived: keep the banner count right
+            self._set_cte(self._cte)
+        elif self._driver is not None:
+            self._set_driver(self._driver)
 
     def destroy(self) -> None:
         if self._counts_job is not None:  # Voltar/Sair during a search
@@ -237,6 +293,7 @@ class SearchFrame(ctk.CTkFrame):
         self._drivers = None
         self._show_sheet_status()
         self._chip = "all"
+        self._set_driver(None)
         self._set_cte(None)
         self.chips.set_active("all")
         self._update_counts()
@@ -334,6 +391,10 @@ class SearchFrame(ctk.CTkFrame):
         self._show_sheet_status()
 
     def _show_sheet_status(self) -> None:
+        """Text beside the chips and the Motoristas tab, both following the drivers lookup."""
+        # Only after a successful read: with a failed one, every invoice would be listed as "Sem motorista na
+        # planilha", which reads as "missing from the sheet" while the sheet just couldn't be read.
+        self.panel.show_drivers_tab(self._drivers is not None and self._drivers.state == "ok")
         status = sheet_status(self._drivers, datetime.now().astimezone())
         if status is None:
             self.lbl_sheet.pack_forget()
@@ -357,7 +418,7 @@ class SearchFrame(ctk.CTkFrame):
         shared_cte = repeated != {cte: n for cte, n in self._multiplicity.items() if n > 1}
         self._multiplicity = multiplicity
 
-        matches = bool(visible_rows([r], self._chip, self._cte))
+        matches = bool(visible_rows([r], self._chip, self._cte, self._driver))
         if retried:
             # Same invoice queried again: update its row in place, or redraw if it enters/leaves the filter.
             if not (matches and self.table.update_row(r, multiplicity)):
@@ -392,6 +453,8 @@ class SearchFrame(ctk.CTkFrame):
                 self._set_cte(self._cte)  # the banner count may have changed
         elif self._chip != "all" and not chip_counts(self._rows())[self._chip]:
             self._on_chip("all")  # e.g. every failure was fixed by "Tentar de novo"
+        if self._drop_empty_driver():  # e.g. "Sem motorista" rows got a driver from their CT-e at the end
+            self._render()
         self._show_connection_banner()
         if self._results:
             self.btn_export.configure(state="normal")
