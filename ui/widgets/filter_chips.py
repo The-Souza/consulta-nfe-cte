@@ -95,20 +95,22 @@ class FilterChips(ctk.CTkFrame):
                 state = "normal"
 
             shown_text, shown_state = self._shown.get(key, (None, None))
+            # The colors go first: when the count changes too (a chip leaving 0 during a search), the new
+            # text is set on a pinned chip below, which resizes it without a jump.
+            if state != shown_state:
+                # While redrawing new colors, an auto-sized CTkButton shrinks to its minimum for a moment
+                # and every chip to its right jumps left and back. Pin the width it already has.
+                if shown_state is not None:
+                    button.configure(width=self._width_on_screen(button), **_STATE_STYLES[state])
+                    self._pinned.add(key)
+                else:
+                    button.configure(**_STATE_STYLES[state])
             if text != shown_text:
                 if key in self._pinned:  # the count changed: let a pinned chip size itself again
                     self._pinned.discard(key)
                     button.configure(text=text, width=0)
                 else:
                     button.configure(text=text)  # text only: CTkButton doesn't redraw for it
-            if state != shown_state:
-                # While redrawing new colors, an auto-sized CTkButton shrinks to its minimum for a moment
-                # and every chip to its right jumps left and back. Pin the width it already has.
-                if shown_state is not None and text == shown_text:
-                    button.configure(width=self._width_on_screen(button), **_STATE_STYLES[state])
-                    self._pinned.add(key)
-                else:
-                    button.configure(**_STATE_STYLES[state])
             self._shown[key] = (text, state)
 
     @staticmethod
