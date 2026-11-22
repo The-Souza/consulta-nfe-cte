@@ -122,21 +122,22 @@ def _open_copy(path: Path) -> Iterator:
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
         copy = Path(folder) / "planilha.xlsx"
         shutil.copy2(path, copy)
-        workbook = _load(copy)
-        try:
-            yield workbook.worksheets[0]
-        finally:
-            workbook.close()  # releases the copy, so the temporary folder can be removed
+        # Our own handle: a load that fails halfway can keep openpyxl's reader alive in a reference cycle,
+        # and the zip reader never closes a file it was given. Closing it here releases the copy on every
+        # path, so the temporary folder can be removed.
+        with open(copy, "rb") as stream:
+            workbook = _load(stream)
+            try:
+                yield workbook.worksheets[0]
+            finally:
+                workbook.close()
 
 
-def _load(copy: Path):
+def _load(stream):
     try:
-        return openpyxl.load_workbook(copy, read_only=True, data_only=True)
-    except Exception:  # openpyxl raises many types for a file that isn't a workbook (zip, XML, key errors)
-        pass
-    # Raised outside the except block: the failed reader's frames are freed with the original exception,
-    # closing the copy, so the temporary folder is removed instead of failing with "file in use".
-    raise SheetError("O arquivo não é uma planilha .xlsx válida.")
+        return openpyxl.load_workbook(stream, read_only=True, data_only=True)
+    except Exception as error:  # openpyxl raises many types for a file that isn't a workbook (zip, XML, keys)
+        raise SheetError("O arquivo não é uma planilha .xlsx válida.") from error
 
 
 def read_headers(path: Path) -> list[tuple[str, str]]:

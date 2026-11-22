@@ -206,12 +206,18 @@ def _not_a_workbook(tmp_path, kind):
     if kind == "zip":  # e.g. a .docx or .xlsb renamed: a zip, but not a workbook
         with zipfile.ZipFile(path, "w") as archive:
             archive.writestr("word/document.xml", "<w/>")
+    elif kind == "broken_sheet":  # a real workbook whose sheet XML is damaged: fails after the workbook exists
+        valid = _sheet(tmp_path, [["Ana", None, 100, None, None, None]], name="valida.xlsx")
+        with zipfile.ZipFile(valid) as source, zipfile.ZipFile(path, "w") as archive:
+            for item in source.infolist():
+                broken = item.filename == "xl/worksheets/sheet1.xml"
+                archive.writestr(item, b"<broken" if broken else source.read(item))
     else:
         path.write_text("não é uma planilha", encoding="utf-8")
     return path
 
 
-@pytest.mark.parametrize("kind", ["zip", "text"])
+@pytest.mark.parametrize("kind", ["zip", "broken_sheet", "text"])
 def test_a_file_that_is_not_a_workbook_raises_a_sheet_error_and_leaves_no_temporary_file(
     tmp_path, monkeypatch, kind,
 ):
