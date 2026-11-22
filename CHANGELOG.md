@@ -4,17 +4,19 @@ Todas as mudanças relevantes do projeto ficam registradas aqui.
 
 O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/). As versões anteriores à 2.0.0 estão descritas nas [releases do GitHub](https://github.com/The-Souza/consulta-nfe-cte/releases).
 
-## [2.0.0-alpha.3] — em andamento
+## [2.0.0-alpha.3] — 2026-11-22
 
 ### Adicionado
 - Consulta: motorista e data de entrega de cada NF-e, lidos de uma tabela no Supabase (só leitura) e mostrados nas colunas Motorista e Entrega. Quando o carregamento foi lançado com um XML único e a NF-e não está na tabela, o motorista vem pelo CT-e.
 - Consulta: ao lado dos chips, de quando é a planilha de motoristas ("Motoristas e datas: planilha de hoje, 14:20"), ou "Motoristas e datas indisponíveis" quando a leitura falha.
 - Consulta: o painel lateral ganha as abas CT-es | Motoristas. A aba Motoristas mostra as NF-es de cada motorista, com as datas de entrega e as sem motorista por último; clicar num motorista filtra a tabela ("Mostrando N NF-es de X · Limpar filtro"), junto com o chip ativo.
+- Consulta: com o chip Sem imagem, o painel mostra "Sem imagem por motorista", para saber de quem cobrar as fotos e de quais dias, e o botão vira "Exportar por motorista": um Excel com uma aba por motorista, cada uma com Motorista, NF-e, Entrega e CT-e. Ao sair do chip, o painel volta para a aba de antes.
 - Excel: colunas Motorista e Entrega na aba "Consulta".
 - Configuração opcional `SUPABASE_URL` e `SUPABASE_ANON_KEY` no `.env`, e o SQL da tabela em `supabase/001_entregas.sql`. Sem elas, ou com o Supabase fora do ar, a consulta funciona normalmente.
 
 ### Alterado
 - Consulta: o limite passa de 5.000 para 200 NF-es por consulta, contando só as diferentes. Uma lista colada com repetidas não é mais recusada por causa delas.
+- Consulta: o CT-e repetido aparece como "25540 · ×3", e clicar numa linha da tabela não a deixa mais selecionada.
 
 ### Removido
 - Consulta: a confirmação acima de 500 NF-es.

@@ -65,7 +65,7 @@ def _cte_text(cte: str, multiplicity: dict[str, int]) -> str:
     if cte in ("-", ""):
         return _DASH
     count = multiplicity.get(cte, 1)
-    return f"{cte}  ×{count}" if count > 1 else cte
+    return f"{cte} · ×{count}" if count > 1 else cte
 
 
 class ResultsTable(ctk.CTkFrame):
@@ -77,7 +77,9 @@ class ResultsTable(ctk.CTkFrame):
         self._fonts = _configure_style(self)
 
         self._tree = ttk.Treeview(
-            self, columns=[c[0] for c in _COLUMNS], show="headings", style=_STYLE, selectmode="browse",
+            # The rows are read-only: a click shouldn't leave one highlighted
+            self, columns=[c[0] for c in _COLUMNS], show="headings", style=_STYLE, selectmode="none",
+            takefocus=False,
         )
         for col, heading, width, anchor, stretch in _COLUMNS:
             self._tree.heading(col, text=heading, anchor=anchor)

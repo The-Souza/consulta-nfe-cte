@@ -3,7 +3,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from utils.excel import build_rows, cte_summary, export_excel
+from utils.excel import build_rows, cte_summary, export_by_driver, export_excel, sheet_name
 
 
 def _result(status="OK", image="Sim", cte="12345", driver="Ana", delivered=date(2026, 11, 12)):
@@ -87,3 +87,119 @@ def test_export_without_ctes_keeps_an_empty_summary_sheet(tmp_path, monkeypatch)
     sheets = pd.read_excel(tmp_path / filename, sheet_name=None)
     assert list(sheets["Resumo CT-e"].columns) == ["CT-e", "NF-es"]
     assert sheets["Resumo CT-e"].empty
+
+
+# sheet names ------------------------------------------------------------------------
+
+def test_sheet_name_keeps_a_valid_name():
+    assert sheet_name("Ana Souza", set()) == "Ana Souza"
+
+
+def test_sheet_name_removes_characters_excel_rejects():
+    assert sheet_name("Ana/Bia\\Caio?*[Davi]:", set()) == "AnaBiaCaioDavi"
+
+
+def test_sheet_name_cuts_at_31_characters():
+    assert sheet_name("A" * 40, set()) == "A" * 31
+
+
+def test_sheet_name_trims_spaces_left_by_the_cut():
+    assert sheet_name("A" * 30 + " B", set()) == "A" * 30
+
+
+@pytest.mark.parametrize("name", ["", "   ", "/?*"])
+def test_sheet_name_without_a_usable_name(name):
+    assert sheet_name(name, set()) == "Sem motorista"
+
+
+def test_sheet_name_numbers_repeated_names():
+    assert sheet_name("Ana", {"Ana"}) == "Ana (2)"
+    assert sheet_name("Ana", {"Ana", "Ana (2)"}) == "Ana (3)"
+
+
+def test_sheet_name_repetition_ignores_case_like_excel():
+    assert sheet_name("ANA", {"Ana"}) == "ANA (2)"
+
+
+def test_sheet_name_repeated_after_the_cut_stays_within_31_characters():
+    name = sheet_name("A" * 40, {"A" * 31})
+
+    assert name == "A" * 27 + " (2)"
+    assert len(name) == 31
+
+
+def test_sheet_name_does_not_change_the_used_names():
+    used = {"Ana"}
+
+    sheet_name("Ana", used)
+
+    assert used == {"Ana"}
+
+
+# export by driver -------------------------------------------------------------------
+
+def _no_image(nfe, driver, delivered=None, cte="25540"):
+    return {"NF-e": nfe, "CT-e": cte, "Imagem": "Não", "Status": "OK", "Motorista": driver, "Entrega": delivered}
+
+
+NO_IMAGE = [
+    _no_image(10, "Bia", date(2026, 11, 14)),
+    _no_image(11, "", cte="-"),
+    _no_image(12, "Ana", date(2026, 11, 12)),
+    _no_image(13, "Bia", None, cte="5533"),
+    _no_image(14, "Bia", date(2026, 11, 15)),
+]
+
+
+def _export(tmp_path, monkeypatch, rows):
+    monkeypatch.chdir(tmp_path)
+    filename = export_by_driver(rows)
+    return filename, pd.read_excel(tmp_path / filename, sheet_name=None, dtype=str, keep_default_na=False)
+
+
+def test_export_by_driver_names_the_file_after_the_first_and_last_invoice(tmp_path, monkeypatch):
+    filename, _ = _export(tmp_path, monkeypatch, NO_IMAGE)
+
+    assert filename == "sem_imagem_por_motorista_10_14.xlsx"
+
+
+def test_export_by_driver_has_one_sheet_per_driver_in_the_panel_order(tmp_path, monkeypatch):
+    _, sheets = _export(tmp_path, monkeypatch, NO_IMAGE)
+
+    assert list(sheets) == ["Bia", "Ana", "Sem motorista"]
+
+
+def test_export_by_driver_lists_driver_invoice_delivery_date_and_cte(tmp_path, monkeypatch):
+    _, sheets = _export(tmp_path, monkeypatch, NO_IMAGE)
+
+    assert list(sheets["Bia"].columns) == ["Motorista", "NF-e", "Entrega", "CT-e"]
+    assert sheets["Bia"].values.tolist() == [
+        ["Bia", "10", "14/11/2026", "25540"],
+        ["Bia", "13", "", "5533"],
+        ["Bia", "14", "15/11/2026", "25540"],
+    ]
+
+
+def test_export_by_driver_names_the_invoices_outside_the_sheet(tmp_path, monkeypatch):
+    _, sheets = _export(tmp_path, monkeypatch, NO_IMAGE)
+
+    assert sheets["Sem motorista"].values.tolist() == [["Sem motorista na planilha", "11", "", "-"]]
+
+
+def test_export_by_driver_keeps_the_full_name_when_the_sheet_name_is_cut(tmp_path, monkeypatch):
+    name = "Motorista com um nome muito comprido demais"
+
+    _, sheets = _export(tmp_path, monkeypatch, [_no_image(1, name)])
+
+    assert list(sheets) == [name[:31].strip()]
+    assert sheets[name[:31].strip()]["Motorista"].tolist() == [name]
+
+
+def test_export_by_driver_keeps_drivers_whose_names_collide_as_sheets(tmp_path, monkeypatch):
+    rows = [_no_image(1, "Ana/Souza"), _no_image(2, "AnaSouza"), _no_image(3, "AnaSouza")]
+
+    _, sheets = _export(tmp_path, monkeypatch, rows)
+
+    assert list(sheets) == ["AnaSouza", "AnaSouza (2)"]
+    assert sheets["AnaSouza"]["NF-e"].tolist() == ["2", "3"]
+    assert sheets["AnaSouza (2)"]["NF-e"].tolist() == ["1"]
