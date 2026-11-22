@@ -4,6 +4,12 @@ Todas as mudanças relevantes do projeto ficam registradas aqui.
 
 O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/). As versões anteriores à 2.0.0 estão descritas nas [releases do GitHub](https://github.com/The-Souza/consulta-nfe-cte/releases).
 
+## [Não lançado]
+
+### Corrigido
+- A barra de título perdia a cor do app ao trocar de tela e ficava com a cor de destaque do Windows.
+- Consulta: os chips não se deslocam mais quando uma contagem sai do zero durante a busca.
+
 ## [2.0.0-alpha.3] — 2026-11-22
 
 ### Adicionado
