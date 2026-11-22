@@ -169,16 +169,30 @@ def test_export_by_driver_has_one_sheet_per_driver_in_the_panel_order(tmp_path, 
     assert list(sheets) == ["Bia", "Ana", "Sem motorista"]
 
 
-def test_export_by_driver_lists_invoice_delivery_date_and_cte(tmp_path, monkeypatch):
+def test_export_by_driver_lists_driver_invoice_delivery_date_and_cte(tmp_path, monkeypatch):
     _, sheets = _export(tmp_path, monkeypatch, NO_IMAGE)
 
-    assert list(sheets["Bia"].columns) == ["NF-e", "Entrega", "CT-e"]
+    assert list(sheets["Bia"].columns) == ["Motorista", "NF-e", "Entrega", "CT-e"]
     assert sheets["Bia"].values.tolist() == [
-        ["10", "14/11/2026", "25540"],
-        ["13", "", "5533"],
-        ["14", "15/11/2026", "25540"],
+        ["Bia", "10", "14/11/2026", "25540"],
+        ["Bia", "13", "", "5533"],
+        ["Bia", "14", "15/11/2026", "25540"],
     ]
-    assert sheets["Sem motorista"].values.tolist() == [["11", "", "-"]]
+
+
+def test_export_by_driver_names_the_invoices_outside_the_sheet(tmp_path, monkeypatch):
+    _, sheets = _export(tmp_path, monkeypatch, NO_IMAGE)
+
+    assert sheets["Sem motorista"].values.tolist() == [["Sem motorista na planilha", "11", "", "-"]]
+
+
+def test_export_by_driver_keeps_the_full_name_when_the_sheet_name_is_cut(tmp_path, monkeypatch):
+    name = "Motorista com um nome muito comprido demais"
+
+    _, sheets = _export(tmp_path, monkeypatch, [_no_image(1, name)])
+
+    assert list(sheets) == [name[:31].strip()]
+    assert sheets[name[:31].strip()]["Motorista"].tolist() == [name]
 
 
 def test_export_by_driver_keeps_drivers_whose_names_collide_as_sheets(tmp_path, monkeypatch):

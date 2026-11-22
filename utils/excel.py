@@ -2,10 +2,10 @@ import re
 
 import pandas as pd
 
-from utils.search_results import cte_counts, driver_groups
+from utils.search_results import NO_DRIVER, NO_DRIVER_LABEL, cte_counts, driver_groups
 
 _SUMMARY_COLUMNS = ["CT-e", "NF-es"]
-_BY_DRIVER_COLUMNS = ["NF-e", "Entrega", "CT-e"]
+_BY_DRIVER_COLUMNS = ["Motorista", "NF-e", "Entrega", "CT-e"]
 
 _SHEET_NAME_MAX = 31
 _SHEET_NAME_INVALID = re.compile(r"[/\\?*\[\]:]")
@@ -74,8 +74,10 @@ def export_by_driver(results: list[dict]) -> str:
     used: set[str] = set()
     with pd.ExcelWriter(filename) as writer:
         for group in driver_groups(results):
+            # The full name on every line: the sheet name may be cut, and the rows may be copied elsewhere
+            driver = NO_DRIVER_LABEL if group.driver == NO_DRIVER else group.driver
             rows = [
-                {"NF-e": r["NF-e"], "Entrega": _format_date(r["Entrega"]), "CT-e": r["CT-e"]}
+                {"Motorista": driver, "NF-e": r["NF-e"], "Entrega": _format_date(r["Entrega"]), "CT-e": r["CT-e"]}
                 for r in results if r["Motorista"] == group.driver
             ]
             name = sheet_name(group.driver, used)
