@@ -5,6 +5,8 @@ name: CI
     branches: [develop, master]
   pull_request:
     branches: [develop, master]
+  # The release runs this same gate before building, so a new check (e.g. mypy) can't be skipped there
+  workflow_call:
 
 permissions:
   contents: read
@@ -14,9 +16,9 @@ jobs:
     name: lint + test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip

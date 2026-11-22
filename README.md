@@ -32,7 +32,7 @@ A última versão do executável está sempre disponível em:
 
 ## Requisitos
 
-- Python 3.10+
+- Python 3.13+
 - Dependências listadas em `requirements.txt`
 - [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) instalado (necessário para a etapa de renomear)
 

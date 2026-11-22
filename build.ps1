@@ -17,6 +17,12 @@ $iconArgs = if (Test-Path $iconFile) { @("--icon", $iconFile) } else { @() }
     @iconArgs `
     script.py
 
+# Without this, a failed build still prints "Build concluido" and leaves the old dist\ in place
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "PyInstaller falhou (codigo $LASTEXITCODE). O dist\ nao foi atualizado."
+    exit $LASTEXITCODE
+}
+
 Write-Host ""
 Write-Host "Build concluido. Proximos passos:" -ForegroundColor Green
 Write-Host "  1. Copie seu arquivo .env para dist\consulta-nfe-cte\"
