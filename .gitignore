@@ -12,6 +12,10 @@ config.json
 # Variáveis de ambiente (contém URLs e dados internos da empresa)
 .env
 
+# Utilitário "Enviar planilha": chave secreta do Supabase e preferências locais
+enviar_planilha.env
+enviar_planilha.json
+
 # Arquivos de saída gerados pelo script e planilhas com dados reais
 *.xlsx
 *.csv
