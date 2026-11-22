@@ -18,7 +18,7 @@ QUERY_HEADERS = {
     "user-agent":    "Mozilla/5.0",
 }
 
-APP_VERSION  = "2.0.0-alpha.3"
+APP_VERSION  = "2.0.0-alpha.4"
 APP_NAME     = os.getenv("APP_NAME", "consulta-nfe")
 APP_SUBTITLE = os.getenv("APP_SUBTITLE", "")
 ICON_FILE    = _base / os.getenv("ICON_FILE", "icon.ico")
