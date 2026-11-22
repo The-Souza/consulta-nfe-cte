@@ -19,6 +19,10 @@ class _Invalid:
 
 INVALID = _Invalid()  # a value that is there but isn't a number/date (unlike an empty cell)
 
+
+class SheetError(Exception):
+    """The chosen file can't be read as a workbook. The message is shown on screen."""
+
 FIELDS = ("nfe", "cte", "driver", "date")
 
 # Header titles, compared without case, accents, spaces, hyphens and dots
@@ -69,7 +73,8 @@ def parse_number(value) -> int | None | _Invalid:
     text = str(value).strip()
     if not text:
         return None
-    if not text.isdigit() or int(text) == 0:
+    # isdigit() alone also accepts Unicode digits like "²", which int() rejects
+    if not (text.isascii() and text.isdigit()) or int(text) == 0:
         return INVALID
     return int(text)
 
@@ -114,14 +119,24 @@ def suggest_columns(headers: list[tuple[str, str]]) -> dict[str, str | None]:
 def _open_copy(path: Path) -> Iterator:
     """The first sheet of a copy of the file. Excel keeps the original locked while it is open, and the
     original is never opened by us, so it can't be changed or locked by a read."""
-    with tempfile.TemporaryDirectory() as folder:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
         copy = Path(folder) / "planilha.xlsx"
         shutil.copy2(path, copy)
-        workbook = openpyxl.load_workbook(copy, read_only=True, data_only=True)
+        workbook = _load(copy)
         try:
             yield workbook.worksheets[0]
         finally:
             workbook.close()  # releases the copy, so the temporary folder can be removed
+
+
+def _load(copy: Path):
+    try:
+        return openpyxl.load_workbook(copy, read_only=True, data_only=True)
+    except Exception:  # openpyxl raises many types for a file that isn't a workbook (zip, XML, key errors)
+        pass
+    # Raised outside the except block: the failed reader's frames are freed with the original exception,
+    # closing the copy, so the temporary folder is removed instead of failing with "file in use".
+    raise SheetError("O arquivo não é uma planilha .xlsx válida.")
 
 
 def read_headers(path: Path) -> list[tuple[str, str]]:

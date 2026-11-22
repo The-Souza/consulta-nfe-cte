@@ -1,3 +1,4 @@
+import io
 import json
 import logging
 import sys
@@ -35,8 +36,11 @@ class SyncConfig:
 
 
 def load_config(path: Path = CONFIG_FILE) -> SyncConfig:
-    # dotenv_values doesn't export to os.environ: the key stays inside this object
-    values = dotenv_values(path) if path.exists() else {}
+    values = {}
+    if path.exists():
+        # utf-8-sig: a BOM left by Windows tools would otherwise stick to the first name.
+        # dotenv_values doesn't export to os.environ: the key stays inside this object.
+        values = dotenv_values(stream=io.StringIO(path.read_text(encoding="utf-8-sig")))
     return SyncConfig(
         url=(values.get("SUPABASE_URL") or "").rstrip("/"),
         secret_key=values.get("SUPABASE_SECRET_KEY") or "",

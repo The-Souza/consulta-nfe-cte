@@ -1,6 +1,7 @@
 import hashlib
 import os
 import tempfile
+import zipfile
 from datetime import date, datetime
 
 import openpyxl
@@ -11,6 +12,7 @@ from sheet_sync.sheet import (
     Columns,
     Entry,
     Ignored,
+    SheetError,
     parse_date,
     parse_number,
     read_entries,
@@ -52,6 +54,8 @@ def _sheet(tmp_path, rows, headers=HEADERS, name="entregas.xlsx"):
     ("000", INVALID),
     (-5, INVALID),
     (True, INVALID),
+    ("4²", INVALID),  # isdigit() alone accepts Unicode digits that int() rejects
+    ("４５", INVALID),
 ])
 def test_parse_number(value, expected):
     assert parse_number(value) == expected
@@ -195,6 +199,33 @@ def test_read_entries_skips_blank_rows_silently(tmp_path):
 
     assert [e.line for e in entries] == [2, 5]
     assert ignored == []
+
+
+def _not_a_workbook(tmp_path, kind):
+    path = tmp_path / "errada.xlsx"
+    if kind == "zip":  # e.g. a .docx or .xlsb renamed: a zip, but not a workbook
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", "<w/>")
+    else:
+        path.write_text("não é uma planilha", encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("kind", ["zip", "text"])
+def test_a_file_that_is_not_a_workbook_raises_a_sheet_error_and_leaves_no_temporary_file(
+    tmp_path, monkeypatch, kind,
+):
+    path = _not_a_workbook(tmp_path, kind)
+    temp_dir = tmp_path / "temp"
+    temp_dir.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp_dir))
+
+    with pytest.raises(SheetError, match="não é uma planilha .xlsx válida"):
+        read_headers(path)
+    with pytest.raises(SheetError):
+        read_entries(path, COLUMNS)
+
+    assert list(temp_dir.iterdir()) == []
 
 
 def test_read_entries_reads_a_copy_and_leaves_no_temporary_file(tmp_path, monkeypatch):

@@ -42,6 +42,14 @@ def test_load_config_with_empty_values_lists_them_as_missing(tmp_path):
     assert config.sheet_path == ""
 
 
+def test_load_config_reads_a_file_saved_with_a_bom(tmp_path):
+    # Windows tools like PowerShell 5 Set-Content save UTF-8 with a BOM before the first name
+    path = tmp_path / "enviar_planilha.env"
+    path.write_text(f"SUPABASE_URL=https://example.supabase.co\nSUPABASE_SECRET_KEY={SECRET}\n", encoding="utf-8-sig")
+
+    assert load_config(path).missing == []
+
+
 def test_load_config_does_not_touch_the_process_environment(tmp_path, monkeypatch):
     monkeypatch.delenv("SUPABASE_SECRET_KEY", raising=False)
 
