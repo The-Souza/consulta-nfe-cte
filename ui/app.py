@@ -37,6 +37,13 @@ class App(ctk.CTk):
         self._login_frame = LoginFrame(self, on_success=self._show_home)
         self._login_frame.pack(fill="both", expand=True)
 
+    def resizable(self, width: bool = None, height: bool = None):
+        result = super().resizable(width, height)
+        # CustomTkinter re-creates the native window here to apply its own title bar mode, and the new one
+        # comes without our color: paint it again.
+        apply_titlebar(self)
+        return result
+
     # ------------------------------------------------------------------
     # NAVEGAÇÃO
     # ------------------------------------------------------------------
