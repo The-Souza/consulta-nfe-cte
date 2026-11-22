@@ -29,6 +29,32 @@ def _deleted(fake_keyring) -> set[str]:
     return {c.args[1] for c in fake_keyring.delete_password.call_args_list}
 
 
+# save -----------------------------------------------------------------------
+
+def test_save_stores_email_and_password(config_file, fake_keyring):
+    credentials.save("user@example.com", "secret")
+
+    assert _saved(config_file) == {"email": "user@example.com"}
+    fake_keyring.set_password.assert_called_once_with(credentials._KEYRING_SERVICE, "user@example.com", "secret")
+
+
+def test_save_keeps_other_config_keys(config_file, fake_keyring):
+    config_file.write_text(json.dumps({"email": "old@example.com", "other": 1}), encoding="utf-8")
+
+    credentials.save("user@example.com", "secret")
+
+    assert _saved(config_file) == {"email": "user@example.com", "other": 1}
+
+
+@pytest.mark.parametrize("content", ["{not json", "[]", "null"])
+def test_save_replaces_unreadable_config(config_file, fake_keyring, content):
+    config_file.write_text(content, encoding="utf-8")
+
+    credentials.save("user@example.com", "secret")
+
+    assert _saved(config_file) == {"email": "user@example.com"}
+
+
 # forget_password ------------------------------------------------------------
 
 def test_forget_password_removes_password_and_keeps_email(config_file, fake_keyring):
