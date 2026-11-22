@@ -11,7 +11,7 @@ from utils.status import Tone
 MAX_ITEMS = 50  # a query can have many CT-es; the panel shows the largest ones
 _WIDTH = 300
 _DETAIL_WRAP = _WIDTH - 60  # item padding, list padding and the scrollbar
-_TITLE_CHARS = 22  # a CTkLabel can't ellipsize: longer driver names are cut by hand, clear of the count
+_TITLE_GAP = 8  # between the title and the count
 
 CTE_TAB = "cte"
 DRIVERS_TAB = "drivers"
@@ -27,8 +27,14 @@ def _plural(n: int, singular: str, plural: str) -> str:
     return f"{n:,}".replace(",", ".") + " " + (singular if n == 1 else plural)
 
 
-def _short(text: str) -> str:
-    return text if len(text) <= _TITLE_CHARS else text[:_TITLE_CHARS - 1].rstrip() + "…"
+def _fit(text: str, font: ctk.CTkFont, width: int) -> str:
+    """A CTkLabel can't ellipsize: cut the text by hand to fit `width`. CTkFont measures at the unscaled size,
+    the same units as the panel width."""
+    if font.measure(text) <= width:
+        return text
+    while text and font.measure(text + "…") > width:
+        text = text[:-1]
+    return text.rstrip() + "…"
 
 
 class _PanelItem(ctk.CTkFrame):
@@ -46,8 +52,8 @@ class _PanelItem(ctk.CTkFrame):
         top.pack(fill="x", padx=theme.SPACE_MD, pady=(theme.SPACE_SM + 2, theme.SPACE_XS + 2))
         self._title = ctk.CTkLabel(top, text="", text_color=theme.TEXT, height=18, font=fonts["cte"])
         self._title.pack(side="left")
-        self._count = ctk.CTkLabel(top, text="", text_color=theme.TEXT_LABEL, height=18,
-                                   font=theme.font(theme.FONT_SIZE_SM))
+        self._count_font = theme.font(theme.FONT_SIZE_SM)
+        self._count = ctk.CTkLabel(top, text="", text_color=theme.TEXT_LABEL, height=18, font=self._count_font)
         self._count.pack(side="right")
         # Many delivery days don't fit in one line: wrap instead of cutting the last dates off
         self._detail = ctk.CTkLabel(self, text="", text_color=theme.TEXT_MUTED, height=16, anchor="w", justify="left",
@@ -69,6 +75,9 @@ class _PanelItem(ctk.CTkFrame):
                     selected: bool) -> None:
         """style: "cte" (mono), "driver" or "unknown" (italic, muted: invoices outside the sheet)."""
         self._key = key
+        # Cut by the room the count leaves: "12 sem imagem" takes more than "12 NF-es"
+        room = _DETAIL_WRAP - self._count_font.measure(count) - _TITLE_GAP
+        title = _fit(title, self._fonts[style], room)
         if self._changed("title", title):
             self._title.configure(text=title)
         if self._changed("style", style):
@@ -112,6 +121,8 @@ class SidePanel(ctk.CTkFrame):
         self._on_tab = on_tab
         self._tab = CTE_TAB
         self._preferred_tab = CTE_TAB  # last tab the user picked; shown again when the drivers tab returns
+        self._drivers_visible = False
+        self._no_image = False  # "Sem imagem" chip: the drivers tab lists whom to ask for the photos
         self._selected_cte: str | None = None
         self._selected_driver: str | None = None
         self._ctes: list[tuple[str, int]] = []
@@ -222,10 +233,11 @@ class SidePanel(ctk.CTkFrame):
     def show_drivers_tab(self, visible: bool) -> None:
         """The Motoristas tab only exists while there is a drivers lookup. It hides at every new search
         until the lookup arrives, so the tab the user picked is remembered and comes back with it."""
+        self._drivers_visible = visible
         if visible:
             if not self._tabs_row.winfo_manager():
                 self._tabs_row.pack(fill="x", padx=theme.SPACE_MD, pady=(theme.SPACE_MD, 0), before=self._header)
-            self._switch(self._preferred_tab)
+            self._switch(DRIVERS_TAB if self._no_image else self._preferred_tab)
         else:
             self._tabs_row.pack_forget()
             self._switch(CTE_TAB)
@@ -233,6 +245,20 @@ class SidePanel(ctk.CTkFrame):
     def show_tab(self, tab: str) -> None:
         self._preferred_tab = tab
         self._switch(tab)
+
+    def set_no_image(self, active: bool) -> None:
+        """While the "Sem imagem" chip is on, the drivers tab shows whom to ask for the photos. Turning it
+        off brings back the tab the user picked before."""
+        if active == self._no_image:
+            return
+        self._no_image = active
+        if active:
+            tab = DRIVERS_TAB
+        else:
+            tab = self._preferred_tab if self._drivers_visible else CTE_TAB
+        self._tab = tab
+        self._tabs.set(_TAB_NAMES[tab])
+        self._apply_tab()  # the titles change even when the tab stays the same
 
     def update_counts(self, ctes: list[tuple[str, int]], drivers: list[DriverGroup], with_cte: int,
                       without_cte: int) -> None:
@@ -272,10 +298,14 @@ class SidePanel(ctk.CTkFrame):
 
     def _apply_tab(self) -> None:
         is_cte = self._tab == CTE_TAB
-        self._title.configure(text="CT-es nesta consulta" if is_cte else "Motoristas nesta consulta")
-        self._hint.configure(
-            text="Clique em um CT-e para filtrar a tabela" if is_cte else "Clique em um motorista para filtrar a tabela",
-        )
+        if is_cte:
+            title, hint = "CT-es nesta consulta", "Clique em um CT-e para filtrar a tabela"
+        elif self._no_image:
+            title, hint = "Sem imagem por motorista", "Para quem cobrar as fotos, e de quais dias"
+        else:
+            title, hint = "Motoristas nesta consulta", "Clique em um motorista para filtrar a tabela"
+        self._title.configure(text=title)
+        self._hint.configure(text=hint)
         self._empty.configure(text="Nenhum CT-e nesta consulta." if is_cte else "Nenhuma NF-e neste filtro.")
         shown, hidden = (self._cte_footer, self._drivers_footer) if is_cte else (self._drivers_footer, self._cte_footer)
         hidden.pack_forget()
@@ -300,7 +330,7 @@ class SidePanel(ctk.CTkFrame):
             unknown = group.driver == NO_DRIVER
             dates = " · ".join(day.strftime("%d/%m") for day in group.dates)
             entries.append((
-                group.driver, NO_DRIVER_LABEL if unknown else _short(group.driver), "unknown" if unknown else "driver",
+                group.driver, NO_DRIVER_LABEL if unknown else group.driver, "unknown" if unknown else "driver",
                 group.count, f"Entregas: {dates}" if dates else "", group.driver == self._selected_driver,
             ))
         return entries
@@ -309,13 +339,14 @@ class SidePanel(ctk.CTkFrame):
         entries = self._entries()
         shown = entries[:MAX_ITEMS]
         largest = max((count for _, _, _, count, _, _ in shown), default=1)
+        unit = ("sem imagem", "sem imagem") if self._no_image and self._tab == DRIVERS_TAB else ("NF-e", "NF-es")
 
         while len(self._items) < len(shown):
             self._items.append(_PanelItem(self._list, self._fonts, self._click))
         for index, item in enumerate(self._items):
             if index < len(shown):
                 key, title, style, count, detail, selected = shown[index]
-                item.update_item(key, title, style, _plural(count, "NF-e", "NF-es"), detail, count / largest, selected)
+                item.update_item(key, title, style, _plural(count, *unit), detail, count / largest, selected)
                 if not item.winfo_manager():
                     item.pack(fill="x", pady=(0, theme.SPACE_XS), before=self._more if self._more.winfo_manager() else None)
             elif item.winfo_manager():

@@ -16,7 +16,7 @@ from ui.widgets.progress import set_message
 from ui.widgets.results_table import ResultsTable
 from ui.widgets.topbar import make_topbar
 from ui.workers.search import SearchCallbacks, SearchWorker
-from utils.excel import export_excel
+from utils.excel import export_by_driver, export_excel
 from utils.nfe_query import parse_query
 from utils.search_results import (
     chip_counts,
@@ -32,6 +32,8 @@ from utils.status import CONNECTION_FAILED, Tone
 _HISTORY_QUERY_CHARS = 40
 _COUNTS_INTERVAL_MS = 250
 _EMPTY_FILTER = "Nenhuma NF-e neste filtro."
+_EXPORT = ("Exportar Excel", "Inclui a aba “Resumo CT-e”")
+_EXPORT_BY_DRIVER = ("Exportar por motorista", "Uma aba por motorista, com NF-e e data")
 
 
 def _primary_button(parent, text: str, icon: str, command: Callable, **options) -> ctk.CTkButton:
@@ -57,6 +59,7 @@ class SearchFrame(ctk.CTkFrame):
         self._multiplicity: dict[str, int] = {}
         self._current_entry: dict | None = None  # history entry of the results on screen
         self._drivers: DriverLookup | None = None  # Supabase lookup of the results on screen
+        self._by_driver = False  # "Sem imagem" chip with drivers read: panel and export work per driver
         self._searching  = False
         self._elapsed    = 0.0
         self._elapsed_before = 0.0
@@ -158,11 +161,12 @@ class SearchFrame(ctk.CTkFrame):
     def _build_footer(self, main: ctk.CTkFrame) -> None:
         bar = ctk.CTkFrame(main, fg_color=theme.TRANSPARENT)
         bar.pack(side="bottom", fill="x")
-        self.btn_export = _primary_button(bar, "Exportar Excel", "download", self._export, state="disabled")
+        self.btn_export = _primary_button(bar, _EXPORT[0], "download", self._export, state="disabled")
         self.btn_export.pack(side="right", anchor="n")
-        ctk.CTkLabel(
-            bar, text="Inclui a aba “Resumo CT-e”", text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM),
-        ).pack(side="right", anchor="n", padx=(0, theme.SPACE_MD), pady=(theme.SPACE_SM + 2, 0))
+        self.lbl_export = ctk.CTkLabel(
+            bar, text=_EXPORT[1], text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM),
+        )
+        self.lbl_export.pack(side="right", anchor="n", padx=(0, theme.SPACE_MD), pady=(theme.SPACE_SM + 2, 0))
         history = ctk.CTkFrame(bar, fg_color=theme.TRANSPARENT)
         history.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_LG))
         self._hist = HistoryPanel(history, on_restore=self._restore)
@@ -188,8 +192,21 @@ class SearchFrame(ctk.CTkFrame):
         self._set_cte(None)
         self._drop_empty_driver()
         self.chips.set_active(key)
+        self._update_by_driver()
         self._update_counts()  # the drivers tab groups the rows of the active chip
         self._render()
+
+    def _update_by_driver(self) -> None:
+        """With the "Sem imagem" chip and the drivers read, the panel and the export turn to whom to ask for
+        the missing photos. Without the drivers, every invoice would fall under "Sem motorista"."""
+        by_driver = self._chip == "no_image" and self._drivers is not None and self._drivers.state == "ok"
+        if by_driver == self._by_driver:
+            return
+        self._by_driver = by_driver
+        self.panel.set_no_image(by_driver)
+        text, hint = _EXPORT_BY_DRIVER if by_driver else _EXPORT
+        self.btn_export.configure(text=text)
+        self.lbl_export.configure(text=hint)
 
     def _drop_empty_driver(self) -> bool:
         """A driver with no invoice under the active chip would leave the table empty and drop out of the
@@ -210,6 +227,7 @@ class SearchFrame(ctk.CTkFrame):
         if cte is not None:
             self._chip = "all"
             self._set_driver(None)
+            self._update_by_driver()
         self._set_cte(cte)
         self.chips.set_active(None if cte else self._chip)
         self._update_counts()
@@ -395,6 +413,7 @@ class SearchFrame(ctk.CTkFrame):
         # Only after a successful read: with a failed one, every invoice would be listed as "Sem motorista na
         # planilha", which reads as "missing from the sheet" while the sheet just couldn't be read.
         self.panel.show_drivers_tab(self._drivers is not None and self._drivers.state == "ok")
+        self._update_by_driver()
         status = sheet_status(self._drivers, datetime.now().astimezone())
         if status is None:
             self.lbl_sheet.pack_forget()
@@ -488,7 +507,14 @@ class SearchFrame(ctk.CTkFrame):
     def _export(self) -> None:
         if not self._results:
             return
-        filename = export_excel(self._rows())
+        if self._by_driver:
+            # Every invoice without image, whatever driver is picked: the file has one sheet per driver
+            rows = visible_rows(self._rows(), "no_image")
+            if not rows:
+                return
+            filename = export_by_driver(rows)
+        else:
+            filename = export_excel(self._rows())
         set_message(self.lbl_progress, f"Salvo: {filename}", Tone.OK)
 
     # ------------------------------------------------------------------
