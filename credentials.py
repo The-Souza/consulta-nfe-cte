@@ -14,7 +14,10 @@ _KEYRING_SERVICE = APP_NAME
 
 
 def save(email: str, password: str) -> None:
-    _CONFIG.write_text(json.dumps({"email": email}), encoding="utf-8")
+    # Only the email changes: config.json may hold other settings
+    data = _read_config()
+    data["email"] = email
+    _CONFIG.write_text(json.dumps(data), encoding="utf-8")
     keyring.set_password(_KEYRING_SERVICE, email, password)
 
 
