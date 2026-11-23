@@ -42,6 +42,10 @@ class Select(ctk.CTkFrame):
         window = self.winfo_toplevel()
         window.bind("<Button-1>", self._on_window_click, add="+")
         window.bind("<Escape>", lambda _e: self._close(), add="+")
+        # The list sits at fixed screen coordinates: close it when the window moves or resizes, and when the app
+        # loses the focus (Alt+Tab, a click on another program), instead of leaving it floating.
+        window.bind("<Configure>", self._on_window_configure, add="+")
+        window.bind("<FocusOut>", lambda _e: self.after(100, self._close_if_app_inactive), add="+")
 
     def get(self) -> str:
         return self._value
@@ -51,6 +55,7 @@ class Select(ctk.CTkFrame):
         self._label.configure(text=value)
 
     def set_values(self, values: list[str]) -> None:
+        self._close()  # an open list would keep showing the old options
         self._values = list(values)
 
     def destroy(self) -> None:
@@ -64,6 +69,22 @@ class Select(ctk.CTkFrame):
             self._close()
         elif self._values:
             self._open()
+
+    def _on_window_configure(self, event) -> None:
+        # The window's own <Configure> only: its children report theirs through the same binding
+        if self._popover is not None and event.widget is self.winfo_toplevel():
+            self._close()
+
+    def _close_if_app_inactive(self) -> None:
+        # Checked a moment later: a click on the list moves the focus to it, which is still this app
+        if self._popover is None:
+            return
+        try:
+            focused = self.focus_get()
+        except KeyError:  # Tk can't name a focused widget that isn't its own
+            focused = None
+        if focused is None:
+            self._close()
 
     def _on_window_click(self, event) -> None:
         if self._popover is not None and not str(event.widget).startswith(str(self)):
