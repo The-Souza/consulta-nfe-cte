@@ -11,7 +11,7 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 
-from sheet_sync.columns import choose_columns
+from sheet_sync.columns import choose_columns, saved_columns_valid
 from sheet_sync.icon import save_icon
 from sheet_sync.report import (
     NO_COLUMN,
@@ -60,6 +60,10 @@ class SendSheetWindow(ctk.CTk):
         self._options: list[str] = []
         self._sending = False
         self._auto_running = False  # the send in progress was started by "Enviar sozinho"
+        self._send_watcher: ChangeWatcher | None = None  # the watcher that started that send
+        # False when the columns on screen weren't checked by the user since they changed (re-chosen after the
+        # sheet changed, or a new sheet): the automatic send waits, since it would write them unseen
+        self._columns_confirmed = False
         self._watcher: ChangeWatcher | None = None
         self._watch_job: str | None = None
 
@@ -191,7 +195,7 @@ class SendSheetWindow(ctk.CTk):
                 button_color=theme.INPUT_BG, button_hover_color=theme.SURFACE_2, text_color=theme.TEXT,
                 dropdown_fg_color=theme.SURFACE, dropdown_hover_color=theme.SURFACE_2, dropdown_text_color=theme.TEXT,
                 font=theme.font(theme.FONT_SIZE_BODY), dropdown_font=theme.font(theme.FONT_SIZE_BODY),
-                dynamic_resizing=False, command=lambda _value: self._save_prefs(),
+                dynamic_resizing=False, command=lambda _value: self._on_column_picked(),
             )
             menu.set(_CHOOSE)
             menu.pack(fill="x")
@@ -230,6 +234,12 @@ class SendSheetWindow(ctk.CTk):
         )
         if path:
             self._open_sheet(path, keep_columns=False)
+            if self._watcher is not None:  # another sheet: watch it from its current state
+                self._start_watching()
+
+    def _on_column_picked(self) -> None:
+        self._columns_confirmed = True
+        self._save_prefs()
 
     def _open_sheet(self, path: str, keep_columns: bool) -> None:
         """Reads the header row to fill the column menus. A saved choice is kept only if each column still has
@@ -250,7 +260,9 @@ class SendSheetWindow(ctk.CTk):
         self._show_file_error(error)
 
         self._options = column_options(headers)
-        chosen = choose_columns(headers, self._prefs.columns, self._prefs.titles, keep=keep_columns)
+        saved, saved_titles = self._prefs.columns, self._prefs.titles
+        self._columns_confirmed = keep_columns and saved_columns_valid(headers, saved, saved_titles)
+        chosen = choose_columns(headers, saved, saved_titles, keep=keep_columns)
         by_letter = {letter_of(option): option for option in self._options}
         for field, menu in self._menus.items():
             values = ([NO_COLUMN] if field == "cte" else []) + self._options
@@ -260,8 +272,6 @@ class SendSheetWindow(ctk.CTk):
         if error and keep_columns:
             return  # nothing was read: keep the saved columns for when the sheet is back
         self._save_prefs()
-        if self._watcher is not None:  # another sheet: watch it from its current state
-            self._start_watching()
 
     def _show_file_error(self, error: str) -> None:
         self._file_error.configure(text=error)
@@ -279,8 +289,11 @@ class SendSheetWindow(ctk.CTk):
         return {field: title_of(menu.get()) for field, menu in self._menus.items() if menu.get() in self._options}
 
     def _save_prefs(self) -> None:
-        self._prefs = Prefs(path=self._path.get(), columns=self._chosen(), titles=self._titles(),
-                            auto_send=bool(self._auto.get()))
+        if self._options:
+            columns, titles = self._chosen(), self._titles()
+        else:  # the sheet wasn't read: the empty menus say nothing, keep the saved columns
+            columns, titles = self._prefs.columns, self._prefs.titles
+        self._prefs = Prefs(path=self._path.get(), columns=columns, titles=titles, auto_send=bool(self._auto.get()))
         try:
             save_prefs(self._prefs)
         except OSError:
@@ -299,6 +312,8 @@ class SendSheetWindow(ctk.CTk):
     def _on_auto_toggle(self) -> None:
         self._save_prefs()
         if self._auto.get():
+            if self._options:  # turning it on with the columns in view counts as checking them
+                self._columns_confirmed = True
             self._start_watching()
         else:
             self._stop_watching()
@@ -325,8 +340,18 @@ class SendSheetWindow(ctk.CTk):
             if action == "confirm":
                 delay = _CONFIRM_MS
             elif action == "send":
-                self._send(auto=True)
+                self._auto_send()
         self._watch_job = self.after(delay, self._watch)
+
+    def _auto_send(self) -> None:
+        if not self._options:  # the sheet couldn't be read before (e.g. a network drive): read its header now
+            self._open_sheet(self._path.get(), keep_columns=True)
+        if self._columns_confirmed:
+            self._send(auto=True)
+            return
+        reason = ("A planilha não pôde ser lida." if not self._options
+                  else "As colunas mudaram desde a última conferência. Confira as colunas e clique em Enviar agora.")
+        self._show_result_card(Tone.WARNING, "Envio automático pausado", message=reason)
 
     def destroy(self) -> None:
         self._stop_watching()
@@ -346,6 +371,7 @@ class SendSheetWindow(ctk.CTk):
 
         self._sending = True
         self._auto_running = auto
+        self._send_watcher = self._watcher if auto else None
         self._btn_preview.configure(state="disabled", text="Conferindo…" if preview else "Conferir sem enviar")
         self._btn_send.configure(state="disabled", text="Enviar agora" if preview else "Enviando…")
 
@@ -360,11 +386,16 @@ class SendSheetWindow(ctk.CTk):
         self._btn_preview.configure(state="normal", text="Conferir sem enviar")
         self._btn_send.configure(state="normal", text="Enviar agora")
         if result.columns_changed:
-            # Reload the menus from the new header, so the user checks the columns before trying again.
-            # Not retried automatically: the reloaded columns wait for the user's next save or click.
+            # Reload the menus from the new header; they stay unconfirmed, so the automatic send waits for
+            # the user to check them
             self._open_sheet(self._path.get(), keep_columns=True)
-        elif self._auto_running and result.error and self._watcher is not None:
-            self._watcher.retry()  # e.g. no internet: the same save goes again at the next checks
+        elif self._auto_running and result.error and self._watcher is not None \
+                and self._watcher is self._send_watcher:
+            # e.g. no internet: the same save goes again at the next checks. Only on the watcher that started
+            # the send: after "Trocar" or a toggle, a new watcher must not send another sheet unasked.
+            self._watcher.retry()
+        elif not self._auto_running and not result.error:
+            self._columns_confirmed = True  # a manual send or preview went through with these columns
         planned = result.new + result.updated
         if result.preview and not result.error:
             message = (f"Ao enviar, {planned} {'linha vai' if planned == 1 else 'linhas vão'} para a tabela."

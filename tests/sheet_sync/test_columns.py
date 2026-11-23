@@ -1,4 +1,6 @@
-from sheet_sync.columns import ambiguous_columns, choose_columns
+import pytest
+
+from sheet_sync.columns import ambiguous_columns, choose_columns, saved_columns_valid
 from sheet_sync.sheet import Columns
 
 # Hand-picked columns whose titles the automatic suggestion wouldn't match
@@ -58,6 +60,22 @@ def test_a_new_sheet_ignores_the_saved_columns():
 
 def test_without_a_header_nothing_is_chosen():
     assert choose_columns([], SAVED, TITLES, keep=True) == {"nfe": None, "driver": None, "date": None, "cte": None}
+
+
+# saved_columns_valid -------------------------------------------------------------
+# Decides whether the automatic send may go on with the saved columns, or must wait for the user
+
+@pytest.mark.parametrize(("headers", "saved", "titles", "expected"), [
+    (HEADERS, SAVED, TITLES, True),
+    ([("A", "Entregador"), ("B", "Cliente"), ("C", "Dia"), ("D", "Nota")], SAVED, TITLES, False),  # moved
+    ([("A", "Entregador"), ("B", "Entregue em"), ("C", "Nota")], SAVED, TITLES, False),  # renamed
+    (HEADERS, SAVED, {}, False),  # saved before titles existed
+    (HEADERS, {}, {}, False),  # nothing saved yet
+    ([], SAVED, TITLES, False),  # sheet not read
+    (HEADERS + [("D", "CTe")], {**SAVED, "cte": "D"}, {**TITLES, "cte": "CTe"}, True),
+])
+def test_saved_columns_valid(headers, saved, titles, expected):
+    assert saved_columns_valid(headers, saved, titles) is expected
 
 
 # ambiguous_columns ---------------------------------------------------------------

@@ -14,17 +14,23 @@ def _unique_titles(headers: list[tuple[str, str]]) -> dict[str, str]:
     return {title: letter for letter, title in headers if title and counts[title] == 1}
 
 
+def saved_columns_valid(headers: list[tuple[str, str]], saved: dict[str, str | None],
+                        saved_titles: dict[str, str]) -> bool:
+    """The saved choice still points at the same columns: every chosen letter still has the title it was
+    chosen by. Only then may the automatic send go on without the user looking at the columns."""
+    current = dict(headers)
+    return all(saved.get(f) for f in _REQUIRED) and all(
+        letter is None or (letter in current and current[letter] == saved_titles.get(field))
+        for field, letter in saved.items()
+    )
+
+
 def choose_columns(headers: list[tuple[str, str]], saved: dict[str, str | None], saved_titles: dict[str, str],
                    keep: bool) -> dict[str, str | None]:
     """The column of each field for the menus. With `keep` (the same sheet opened again), the saved choice
     stays while each column keeps its title; otherwise each saved title is followed to its new letter and
     the rest is suggested from the titles. A CT-e saved as no column stays without one."""
-    current = dict(headers)
-    saved_ok = keep and all(saved.get(f) for f in _REQUIRED) and all(
-        letter is None or (letter in current and current[letter] == saved_titles.get(field))
-        for field, letter in saved.items()
-    )
-    if saved_ok:
+    if keep and saved_columns_valid(headers, saved, saved_titles):
         return {field: saved.get(field) for field in FIELDS}
 
     chosen = suggest_columns(headers)
