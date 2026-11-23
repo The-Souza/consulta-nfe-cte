@@ -25,6 +25,9 @@ class SheetError(Exception):
 
 FIELDS = ("nfe", "cte", "driver", "date")
 
+# Typed in the sheet so a cell isn't left blank ("sem dados"); read as an empty cell
+_NO_DATA = {"s/d"}
+
 # Header titles, compared without case, accents, spaces, hyphens and dots
 _TITLES = {
     "nfe": {"nfe", "notafiscal"},
@@ -71,7 +74,7 @@ def parse_number(value) -> int | None | _Invalid:
     if isinstance(value, int):
         return value if value > 0 else INVALID
     text = str(value).strip()
-    if not text:
+    if not text or text.casefold() in _NO_DATA:
         return None
     # isdigit() alone also accepts Unicode digits like "²", which int() rejects
     if not (text.isascii() and text.isdigit()) or int(text) == 0:
@@ -90,7 +93,7 @@ def parse_date(value) -> date | None | _Invalid:
     if not isinstance(value, str):
         return INVALID
     text = value.strip()
-    if not text:
+    if not text or text.casefold() in _NO_DATA:
         return None
     try:
         return datetime.strptime(text, "%d/%m/%Y").date()
