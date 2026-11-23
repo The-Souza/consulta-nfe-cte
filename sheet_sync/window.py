@@ -11,7 +11,15 @@ from tkinter import filedialog
 import customtkinter as ctk
 
 from sheet_sync.icon import save_icon
-from sheet_sync.report import NO_COLUMN, column_options, count_label, ignored_lines, letter_of, sent_label
+from sheet_sync.report import (
+    NO_COLUMN,
+    column_options,
+    count_label,
+    ignored_lines,
+    letter_of,
+    sent_label,
+    title_of,
+)
 from sheet_sync.settings import Prefs, load_config, load_prefs, save_prefs
 from sheet_sync.sheet import Columns, SheetError, read_headers, suggest_columns
 from sheet_sync.sync import SyncResult, config_error, sync
@@ -199,7 +207,7 @@ class SendSheetWindow(ctk.CTk):
                                      text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM))
 
     # ------------------------------------------------------------------
-    # PLANILHA E COLUNAS
+    # SHEET AND COLUMNS
     # ------------------------------------------------------------------
 
     def _choose_file(self) -> None:
@@ -210,8 +218,9 @@ class SendSheetWindow(ctk.CTk):
             self._open_sheet(path, keep_columns=False)
 
     def _open_sheet(self, path: str, keep_columns: bool) -> None:
-        """Reads the header row to fill the column menus. A saved choice is kept only if those columns still
-        exist; otherwise the columns are suggested again from the titles."""
+        """Reads the header row to fill the column menus. A saved choice is kept only if each column still has
+        the title it was chosen by; otherwise the columns are suggested again from the titles. A sheet that
+        can't be read leaves the saved choice alone (e.g. a network drive not mounted yet at startup)."""
         self._path.set(path)
         try:
             headers = read_headers(Path(path))
@@ -227,18 +236,31 @@ class SendSheetWindow(ctk.CTk):
         self._show_file_error(error)
 
         self._options = column_options(headers)
-        letters = {letter for letter, _ in headers}
-        saved = self._prefs.columns
-        saved_ok = keep_columns and saved and all(saved.get(f) in letters for f in _REQUIRED) and (
-            saved.get("cte") is None or saved.get("cte") in letters
+        current = dict(headers)
+        saved, saved_titles = self._prefs.columns, self._prefs.titles
+        saved_ok = keep_columns and bool(saved) and all(saved.get(f) for f in _REQUIRED) and all(
+            letter is None or (letter in current and current[letter] == saved_titles.get(field))
+            for field, letter in saved.items()
         )
-        chosen = saved if saved_ok else suggest_columns(headers)
+        if saved_ok:
+            chosen = saved
+        else:
+            chosen = suggest_columns(headers)
+            if keep_columns:  # follow a saved column to wherever its title moved (a column inserted before it)
+                by_title: dict[str, str] = {}
+                for letter, title in headers:
+                    by_title.setdefault(title, letter)
+                for field, title in saved_titles.items():
+                    if title and title in by_title:
+                        chosen[field] = by_title[title]
         by_letter = {letter_of(option): option for option in self._options}
         for field, menu in self._menus.items():
             values = ([NO_COLUMN] if field == "cte" else []) + self._options
             menu.configure(values=values or [_CHOOSE])
             default = NO_COLUMN if field == "cte" else _CHOOSE
             menu.set(by_letter.get(chosen.get(field), default))
+        if error and keep_columns:
+            return  # nothing was read: keep the saved columns for when the sheet is back
         self._save_prefs()
 
     def _show_file_error(self, error: str) -> None:
@@ -252,15 +274,20 @@ class SendSheetWindow(ctk.CTk):
         return {field: letter_of(menu.get()) if menu.get() in self._options else None
                 for field, menu in self._menus.items()}
 
+    def _titles(self) -> dict[str, str]:
+        """Header title of each chosen column, checked again by sync() right before reading the rows."""
+        return {field: title_of(menu.get()) for field, menu in self._menus.items() if menu.get() in self._options}
+
     def _save_prefs(self) -> None:
-        self._prefs = Prefs(path=self._path.get(), columns=self._chosen(), auto_send=self._prefs.auto_send)
+        self._prefs = Prefs(path=self._path.get(), columns=self._chosen(), titles=self._titles(),
+                            auto_send=self._prefs.auto_send)
         try:
             save_prefs(self._prefs)
         except OSError:
             logger.warning("Could not save the preferences", exc_info=True)
 
     # ------------------------------------------------------------------
-    # ENVIO
+    # SENDING
     # ------------------------------------------------------------------
 
     def _send(self, preview: bool = False) -> None:
@@ -273,14 +300,14 @@ class SendSheetWindow(ctk.CTk):
             self._show_result_card(Tone.ERROR, "Não foi possível enviar", message=text)
             return
         columns = Columns(nfe=chosen["nfe"], driver=chosen["driver"], date=chosen["date"], cte=chosen["cte"])
-        path = self._path.get()
+        path, titles = self._path.get(), self._titles()
 
         self._sending = True
         self._btn_preview.configure(state="disabled", text="Conferindo…" if preview else "Conferir sem enviar")
         self._btn_send.configure(state="disabled", text="Enviar agora" if preview else "Enviando…")
 
         def work() -> None:
-            result = sync(path, columns, self._config, preview=preview)
+            result = sync(path, columns, self._config, preview=preview, titles=titles)
             self.after(0, self._finish, result)
 
         threading.Thread(target=work, daemon=True).start()
@@ -289,6 +316,9 @@ class SendSheetWindow(ctk.CTk):
         self._sending = False
         self._btn_preview.configure(state="normal", text="Conferir sem enviar")
         self._btn_send.configure(state="normal", text="Enviar agora")
+        if result.columns_changed:
+            # Reload the menus from the new header, so the user checks the columns before trying again
+            self._open_sheet(self._path.get(), keep_columns=True)
         planned = result.new + result.updated
         if result.preview and not result.error:
             message = (f"Ao enviar, {planned} {'linha vai' if planned == 1 else 'linhas vão'} para a tabela."

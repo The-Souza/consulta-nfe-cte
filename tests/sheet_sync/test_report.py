@@ -2,7 +2,15 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from sheet_sync.report import NO_COLUMN, column_options, count_label, ignored_lines, letter_of, sent_label
+from sheet_sync.report import (
+    NO_COLUMN,
+    column_options,
+    count_label,
+    ignored_lines,
+    letter_of,
+    sent_label,
+    title_of,
+)
 from sheet_sync.sheet import Ignored
 
 LOCAL = timezone(timedelta(hours=-3))
@@ -80,3 +88,13 @@ def test_column_options_show_letter_and_title():
 ])
 def test_letter_of_reads_the_column_back(option, expected):
     assert letter_of(option) == expected
+
+
+@pytest.mark.parametrize(("option", "expected"), [
+    ("D · Nota fiscal", "Nota fiscal"),
+    ("C · Data · entrega", "Data · entrega"),
+    ("B", ""),
+    (NO_COLUMN, ""),
+])
+def test_title_of_reads_the_header_title_back(option, expected):
+    assert title_of(option) == expected

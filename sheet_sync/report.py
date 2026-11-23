@@ -64,3 +64,9 @@ def letter_of(option: str) -> str | None:
     if not option or option == NO_COLUMN:
         return None
     return option.split(_SEPARATOR, 1)[0]
+
+
+def title_of(option: str) -> str:
+    """The header title of an option, "" for a column with an empty header cell (or no column)."""
+    parts = option.split(_SEPARATOR, 1)
+    return parts[1] if len(parts) == 2 else ""

@@ -93,7 +93,7 @@ def test_load_prefs_with_an_unreadable_file_returns_the_defaults(tmp_path, conte
 
 
 def test_load_prefs_ignores_values_of_the_wrong_type(tmp_path):
-    path = _prefs_file(tmp_path, json.dumps({"path": 3, "columns": ["A"], "auto_send": "yes"}))
+    path = _prefs_file(tmp_path, json.dumps({"path": 3, "columns": ["A"], "titles": {"nfe": 1}, "auto_send": "yes"}))
 
     assert load_prefs(path) == Prefs()
 
@@ -101,11 +101,17 @@ def test_load_prefs_ignores_values_of_the_wrong_type(tmp_path):
 def test_save_and_load_prefs_round_trip(tmp_path):
     path = _prefs_file(tmp_path)
     prefs = Prefs(path="C:\\entregas.xlsx", columns={"nfe": "C", "cte": None, "driver": "A", "date": "B"},
-                  auto_send=True)
+                  titles={"nfe": "NFe", "driver": "Motorista", "date": "Data"}, auto_send=True)
 
     save_prefs(prefs, path)
 
     assert load_prefs(path) == prefs
+
+
+def test_prefs_saved_before_titles_existed_load_without_titles(tmp_path):
+    path = _prefs_file(tmp_path, json.dumps({"path": "a.xlsx", "columns": {"nfe": "C"}, "auto_send": False}))
+
+    assert load_prefs(path) == Prefs(path="a.xlsx", columns={"nfe": "C"}, titles={})
 
 
 def test_save_prefs_keeps_other_keys(tmp_path):
