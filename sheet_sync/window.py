@@ -9,14 +9,14 @@ from pathlib import Path
 from tkinter import filedialog
 
 import customtkinter as ctk
-from PIL import Image, ImageDraw
 
+from sheet_sync.icon import save_icon
 from sheet_sync.report import NO_COLUMN, column_options, count_label, ignored_lines, letter_of, sent_label
 from sheet_sync.settings import Prefs, load_config, load_prefs, save_prefs
 from sheet_sync.sheet import Columns, SheetError, read_headers, suggest_columns
 from sheet_sync.sync import SyncResult, config_error, sync
 from ui import theme
-from ui.icons import ICONS_DIR, get_icon, tint
+from ui.icons import get_icon
 from ui.titlebar import apply_titlebar
 from ui.widgets.banner import Banner
 from utils.status import Tone
@@ -66,17 +66,10 @@ class SendSheetWindow(ctk.CTk):
     # ------------------------------------------------------------------
 
     def _set_icon(self) -> None:
-        """No brand icon here: a green square with the upload arrow, like the login fallback logo. Without
-        iconbitmap, CustomTkinter puts its own icon on the window 200 ms after start."""
-        size = 64
-        icon = Image.new("RGBA", (size, size))
-        ImageDraw.Draw(icon).rounded_rectangle((0, 0, size - 1, size - 1), radius=14, fill=theme.PRIMARY)
-        with Image.open(ICONS_DIR / "upload.png") as arrow:
-            glyph = tint(arrow, theme.TEXT_ON_PRIMARY).resize((36, 36), Image.Resampling.LANCZOS)
-        icon.alpha_composite(glyph, ((size - 36) // 2, (size - 36) // 2))
+        """Without iconbitmap, CustomTkinter puts its own icon on the window 200 ms after start."""
         path = Path(tempfile.gettempdir()) / "enviar-planilha.ico"  # Windows only takes a file for this
         try:
-            icon.save(path, sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
+            save_icon(path)
             self.iconbitmap(str(path))
         except (OSError, tkinter.TclError):
             logger.warning("Could not set the window icon", exc_info=True)
