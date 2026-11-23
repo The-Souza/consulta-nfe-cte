@@ -91,6 +91,22 @@ def test_sync_stops_when_a_column_was_inserted_before_the_chosen_ones(tmp_path):
 
 
 @responses.activate
+def test_sync_stops_when_a_chosen_column_has_a_repeated_title(tmp_path):
+    # Two "Data" columns: a column inserted between them would go unnoticed by the title check
+    workbook = openpyxl.Workbook()
+    workbook.active.append(["Motorista", "Data", "NFe", "Data", "Destinatário", "CTe"])
+    workbook.active.append(["Ana", datetime(2026, 11, 22), 100, datetime(2026, 11, 20), None, 25540])
+    path = tmp_path / "entregas.xlsx"
+    workbook.save(path)
+
+    result = sync(path, COLUMNS, CONFIG, now=NOW, titles=TITLES)
+
+    assert result.error == ("A coluna de Data de entrega precisa de um título único na planilha "
+                            "(hoje está repetido ou vazio).")
+    assert len(responses.calls) == 0
+
+
+@responses.activate
 def test_a_preview_also_stops_when_the_columns_changed(tmp_path):
     result = sync(_sheet(tmp_path, ROWS), COLUMNS, CONFIG, now=NOW, preview=True,
                   titles={**TITLES, "driver": "Entregador"})

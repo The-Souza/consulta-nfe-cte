@@ -10,6 +10,7 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 
+from sheet_sync.columns import choose_columns
 from sheet_sync.icon import save_icon
 from sheet_sync.report import (
     NO_COLUMN,
@@ -21,7 +22,7 @@ from sheet_sync.report import (
     title_of,
 )
 from sheet_sync.settings import Prefs, load_config, load_prefs, save_prefs
-from sheet_sync.sheet import Columns, SheetError, read_headers, suggest_columns
+from sheet_sync.sheet import Columns, SheetError, read_headers
 from sheet_sync.sync import SyncResult, config_error, sync
 from ui import theme
 from ui.icons import get_icon
@@ -236,23 +237,7 @@ class SendSheetWindow(ctk.CTk):
         self._show_file_error(error)
 
         self._options = column_options(headers)
-        current = dict(headers)
-        saved, saved_titles = self._prefs.columns, self._prefs.titles
-        saved_ok = keep_columns and bool(saved) and all(saved.get(f) for f in _REQUIRED) and all(
-            letter is None or (letter in current and current[letter] == saved_titles.get(field))
-            for field, letter in saved.items()
-        )
-        if saved_ok:
-            chosen = saved
-        else:
-            chosen = suggest_columns(headers)
-            if keep_columns:  # follow a saved column to wherever its title moved (a column inserted before it)
-                by_title: dict[str, str] = {}
-                for letter, title in headers:
-                    by_title.setdefault(title, letter)
-                for field, title in saved_titles.items():
-                    if title and title in by_title:
-                        chosen[field] = by_title[title]
+        chosen = choose_columns(headers, self._prefs.columns, self._prefs.titles, keep=keep_columns)
         by_letter = {letter_of(option): option for option in self._options}
         for field, menu in self._menus.items():
             values = ([NO_COLUMN] if field == "cte" else []) + self._options

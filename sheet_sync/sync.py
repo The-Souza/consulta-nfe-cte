@@ -6,6 +6,7 @@ from pathlib import Path
 
 import requests
 
+from sheet_sync.columns import ambiguous_columns
 from sheet_sync.diff import compare
 from sheet_sync.settings import SyncConfig
 from sheet_sync.sheet import Columns, Ignored, SheetError, read_entries, read_headers
@@ -62,7 +63,15 @@ def sync(path: Path | str, columns: Columns, config: SyncConfig, session: reques
 
     try:
         if titles is not None:
-            changed = _changed_columns(read_headers(path), columns, titles)
+            headers = read_headers(path)
+            ambiguous = [_FIELD_LABELS[field] for field in ambiguous_columns(headers, columns)]
+            if ambiguous:
+                subject = (f"A coluna de {ambiguous[0]} precisa" if len(ambiguous) == 1
+                           else f"As colunas de {', '.join(ambiguous)} precisam")
+                return SyncResult(finished_at=now, error=(
+                    f"{subject} de um título único na planilha (hoje está repetido ou vazio)."
+                ))
+            changed = _changed_columns(headers, columns, titles)
             if changed:
                 return SyncResult(finished_at=now, columns_changed=True, error=(
                     f"As colunas da planilha mudaram ({', '.join(changed)}). Confira as colunas e tente de novo."
