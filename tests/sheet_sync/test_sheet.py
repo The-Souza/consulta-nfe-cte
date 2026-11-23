@@ -56,6 +56,8 @@ def _sheet(tmp_path, rows, headers=HEADERS, name="entregas.xlsx"):
     (True, INVALID),
     ("4²", INVALID),  # isdigit() alone accepts Unicode digits that int() rejects
     ("４５", INVALID),
+    ("S/D", None),  # "sem dados": typed so the cell isn't left blank
+    (" s/d ", None),
 ])
 def test_parse_number(value, expected):
     assert parse_number(value) == expected
@@ -74,6 +76,7 @@ def test_parse_number(value, expected):
     ("amanhã", INVALID),
     ("2026-11-22", INVALID),
     (46348, INVALID),
+    ("S/D", None),
 ])
 def test_parse_date(value, expected):
     assert parse_date(value) == expected
@@ -123,6 +126,15 @@ def test_read_entries_normalizes_each_row(tmp_path):
         Entry(nfe=4516662, cte=None, driver="Bia", date=date(2026, 11, 21), line=3),
         Entry(nfe=None, cte=5533, driver="Caio", date=None, line=4),
     ]
+    assert ignored == []
+
+
+def test_read_entries_reads_a_load_row_marked_without_data_on_the_invoice(tmp_path):
+    path = _sheet(tmp_path, [["Ana", datetime(2026, 11, 22), "S/D", None, None, 5533]])
+
+    entries, ignored = read_entries(path, COLUMNS)
+
+    assert entries == [Entry(nfe=None, cte=5533, driver="Ana", date=date(2026, 11, 22), line=2)]
     assert ignored == []
 
 

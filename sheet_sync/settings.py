@@ -52,6 +52,8 @@ def load_config(path: Path = CONFIG_FILE) -> SyncConfig:
 class Prefs:
     path: str = ""
     columns: dict[str, str | None] = field(default_factory=dict)  # "nfe", "cte", "driver", "date" -> letter
+    # Header title of each chosen column: a column inserted in the sheet moves the titles, not the letters
+    titles: dict[str, str] = field(default_factory=dict)
     auto_send: bool = False
 
 
@@ -73,9 +75,14 @@ def load_prefs(path: Path = PREFS_FILE) -> Prefs:
     valid_columns = isinstance(columns, dict) and all(
         isinstance(k, str) and (v is None or isinstance(v, str)) for k, v in columns.items()
     )
+    titles = data.get("titles")
+    valid_titles = isinstance(titles, dict) and all(
+        isinstance(k, str) and isinstance(v, str) for k, v in titles.items()
+    )
     return Prefs(
         path=data["path"] if isinstance(data.get("path"), str) else "",
         columns=dict(columns) if valid_columns else {},
+        titles=dict(titles) if valid_titles else {},
         auto_send=data["auto_send"] if isinstance(data.get("auto_send"), bool) else False,
     )
 
@@ -83,5 +90,5 @@ def load_prefs(path: Path = PREFS_FILE) -> Prefs:
 def save_prefs(prefs: Prefs, path: Path = PREFS_FILE) -> None:
     # Only our keys change: anything else in the file is kept
     data = _read_json(path)
-    data.update(path=prefs.path, columns=prefs.columns, auto_send=prefs.auto_send)
+    data.update(path=prefs.path, columns=prefs.columns, titles=prefs.titles, auto_send=prefs.auto_send)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

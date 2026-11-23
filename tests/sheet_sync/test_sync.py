@@ -59,6 +59,73 @@ def test_sync_sends_only_what_changed(tmp_path):
     assert merged[0]["id"] == "b" and merged[0]["motorista"] == "Bia"
 
 
+TITLES = {"nfe": "NFe", "driver": "Motorista", "date": "Data", "cte": "CTe"}
+
+
+@responses.activate
+def test_sync_goes_on_when_the_chosen_columns_keep_their_titles(tmp_path):
+    responses.get(TABLE, json=STORED)
+    responses.post(TABLE, status=201)
+    responses.post(TABLE, status=200)
+
+    result = sync(_sheet(tmp_path, ROWS), COLUMNS, CONFIG, now=NOW, titles=TITLES)
+
+    assert (result.error, result.written, result.columns_changed) == (None, 2, False)
+
+
+@responses.activate
+def test_sync_stops_when_a_column_was_inserted_before_the_chosen_ones(tmp_path):
+    # "Cliente" inserted at B: B is no longer "Data" and C is no longer "NFe"
+    workbook = openpyxl.Workbook()
+    workbook.active.append(["Motorista", "Cliente", "Data", "NFe", "Destinatário", "CTe"])
+    workbook.active.append(["Ana", "Cliente X", datetime(2026, 11, 22), 100, None, 25540])
+    path = tmp_path / "entregas.xlsx"
+    workbook.save(path)
+
+    result = sync(path, COLUMNS, CONFIG, now=NOW, titles=TITLES)
+
+    assert result.error == ("As colunas da planilha mudaram (NF-e, Data de entrega). "
+                            "Confira as colunas e tente de novo.")
+    assert result.columns_changed is True
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_sync_stops_when_a_chosen_column_has_a_repeated_title(tmp_path):
+    # Two "Data" columns: a column inserted between them would go unnoticed by the title check
+    workbook = openpyxl.Workbook()
+    workbook.active.append(["Motorista", "Data", "NFe", "Data", "Destinatário", "CTe"])
+    workbook.active.append(["Ana", datetime(2026, 11, 22), 100, datetime(2026, 11, 20), None, 25540])
+    path = tmp_path / "entregas.xlsx"
+    workbook.save(path)
+
+    result = sync(path, COLUMNS, CONFIG, now=NOW, titles=TITLES)
+
+    assert result.error == ("A coluna de Data de entrega precisa de um título único na planilha "
+                            "(hoje está repetido ou vazio).")
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_a_preview_also_stops_when_the_columns_changed(tmp_path):
+    result = sync(_sheet(tmp_path, ROWS), COLUMNS, CONFIG, now=NOW, preview=True,
+                  titles={**TITLES, "driver": "Entregador"})
+
+    assert result.error.startswith("As colunas da planilha mudaram (Motorista)")
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_a_preview_counts_the_changes_without_writing(tmp_path):
+    responses.get(TABLE, json=STORED)
+
+    result = sync(_sheet(tmp_path, ROWS), COLUMNS, CONFIG, now=NOW, preview=True)
+
+    assert result == SyncResult(finished_at=NOW, new=1, updated=1, unchanged=1, written=0,
+                                ignored=[Ignored(5, "sem motorista")], preview=True)
+    assert _posts() == []
+
+
 @responses.activate
 def test_sync_with_nothing_changed_reads_but_does_not_write(tmp_path):
     responses.get(TABLE, json=STORED[:1])

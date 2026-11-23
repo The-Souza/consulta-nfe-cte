@@ -81,6 +81,39 @@ A Consulta mostra o motorista e a data de entrega de cada NF-e lendo a tabela `e
 
 Sem `SUPABASE_URL` e `SUPABASE_ANON_KEY`, ou se o Supabase estiver fora do ar, a consulta funciona normalmente e as colunas de motorista mostram "—". Use apenas a chave publishable: a secret key ignora o RLS e nunca deve ir para o `.env`.
 
+## Enviar planilha (só no PC de quem mantém a planilha)
+
+O utilitário **Enviar planilha** lê a planilha de entregas (`.xlsx`) e atualiza a tabela `entregas` do Supabase, de onde a Consulta tira o motorista e a data. É um programa separado do app, com configuração própria.
+
+- Lê a primeira aba, com o cabeçalho na linha 1. As colunas de NF-e, motorista, data de entrega e CT-e (opcional) são escolhidas na tela e sugeridas pelo título.
+- Grava só o que mudou: NF-es novas e as que tiveram motorista, data ou CT-e alterados. Nada é apagado da tabela.
+- **Conferir sem enviar** mostra quantas linhas seriam novas, atualizadas e ignoradas, sem gravar nada.
+- Lê uma cópia da planilha, então funciona com o Excel aberto e nunca altera o arquivo.
+
+### Configuração
+
+Copie `enviar_planilha.env.example` para `enviar_planilha.env`, na raiz do projeto ou ao lado do `enviar-planilha.exe`:
+
+| Variável              | Descrição                                                                       |
+| --------------------- | ------------------------------------------------------------------------------- |
+| `SUPABASE_URL`        | URL do projeto Supabase                                                         |
+| `SUPABASE_SECRET_KEY` | Chave secreta (`sb_secret_...`), a única que pode gravar na tabela              |
+| `PLANILHA_PATH`       | Planilha aberta na primeira vez (opcional). Cole o caminho **sem aspas**        |
+
+> A chave secreta ignora o RLS. Ela fica só no `enviar_planilha.env`, que está no `.gitignore`, e **nunca** vai para o `.env` do app, para o git ou para outra máquina.
+
+### Executar e gerar o executável
+
+```powershell
+# Pelo código
+python enviar_planilha.py
+
+# Executável em dist\enviar-planilha\
+.\build_enviar.ps1
+```
+
+Depois do build, copie o `enviar_planilha.env` para `dist\enviar-planilha\`. O utilitário não entra no release do GitHub.
+
 ## Gerando o executável
 
 ```powershell
@@ -124,6 +157,9 @@ consulta-nfe-cte/
 ├── config.py           # Carrega .env e exporta constantes
 ├── credentials.py      # Armazenamento seguro de credenciais (keyring)
 ├── build.ps1           # Script de build para gerar o .exe
+├── enviar_planilha.py  # Ponto de entrada do utilitário Enviar planilha
+├── build_enviar.ps1    # Build do enviar-planilha.exe
+├── sheet_sync/         # Enviar planilha: leitura da planilha, comparação, envio ao Supabase e janela
 ├── ui/
 │   ├── app.py          # Janela principal e navegação entre telas
 │   ├── frames/
@@ -146,6 +182,7 @@ consulta-nfe-cte/
 ├── supabase/           # SQL da tabela de motoristas (entregas)
 ├── tests/              # Testes (pytest)
 ├── .env.example        # Modelo de variáveis de ambiente
+├── enviar_planilha.env.example  # Modelo da configuração do Enviar planilha
 ├── pyproject.toml      # Configuração do ruff e do pytest
 ├── requirements.txt
 └── requirements-dev.txt
