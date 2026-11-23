@@ -1,6 +1,7 @@
 """The "Enviar planilha" window (design/EnviarPlanilha.dc.html). The logic lives in sync/report; this file only
 draws and wires it. Network and file reading run in a thread; the UI is touched only through after()."""
 import logging
+import os
 import tempfile
 import threading
 import tkinter
@@ -24,6 +25,7 @@ from sheet_sync.report import (
 from sheet_sync.settings import Prefs, load_config, load_prefs, save_prefs
 from sheet_sync.sheet import Columns, SheetError, read_headers
 from sheet_sync.sync import SyncResult, config_error, sync
+from sheet_sync.watcher import ChangeWatcher
 from ui import theme
 from ui.icons import get_icon
 from ui.titlebar import apply_titlebar
@@ -36,6 +38,10 @@ _WIDTH, _HEIGHT = 520, 660
 _CHOOSE = "Escolha a coluna"
 _FIELD_LABELS = {"nfe": "NF-e", "driver": "Motorista", "date": "Data de entrega", "cte": "CT-e (opcional)"}
 _REQUIRED = ("nfe", "driver", "date")
+# "Enviar sozinho": the sheet is checked every 30 s; a change is confirmed 5 s later, so a save reaches the
+# table in about 35 s (the spec allows 1 minute)
+_WATCH_MS = 30_000
+_CONFIRM_MS = 5_000
 
 
 class SendSheetWindow(ctk.CTk):
@@ -53,16 +59,23 @@ class SendSheetWindow(ctk.CTk):
         self._prefs = load_prefs()
         self._options: list[str] = []
         self._sending = False
+        self._auto_running = False  # the send in progress was started by "Enviar sozinho"
+        self._watcher: ChangeWatcher | None = None
+        self._watch_job: str | None = None
 
         self._build()
+        if self._prefs.auto_send:  # before opening the sheet, which saves the prefs with the checkbox state
+            self._auto.select()
         problem = config_error(self._config)
         if problem:
             self._config_banner.show(Tone.ERROR, problem, icon="x")
-            self._btn_send.configure(state="disabled")
-            self._btn_preview.configure(state="disabled")
+            for widget in (self._btn_send, self._btn_preview, self._auto):
+                widget.configure(state="disabled")
         path = self._prefs.path or self._config.sheet_path
         if path:
             self._open_sheet(path, keep_columns=True)
+        if self._auto.get() and not problem:
+            self._start_watching()
 
     def resizable(self, width: bool = None, height: bool = None):
         result = super().resizable(width, height)
@@ -114,7 +127,7 @@ class SendSheetWindow(ctk.CTk):
         self._build_result(self._result)
 
         self._auto = ctk.CTkCheckBox(
-            main, text="Enviar sozinho quando eu salvar a planilha", state="disabled",
+            main, text="Enviar sozinho quando eu salvar a planilha", command=self._on_auto_toggle,
             text_color=theme.TEXT_LABEL, text_color_disabled=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_BODY),
             fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOVER, border_color=theme.BORDER_INPUT,
             checkbox_width=16, checkbox_height=16, corner_radius=4,
@@ -247,6 +260,8 @@ class SendSheetWindow(ctk.CTk):
         if error and keep_columns:
             return  # nothing was read: keep the saved columns for when the sheet is back
         self._save_prefs()
+        if self._watcher is not None:  # another sheet: watch it from its current state
+            self._start_watching()
 
     def _show_file_error(self, error: str) -> None:
         self._file_error.configure(text=error)
@@ -265,7 +280,7 @@ class SendSheetWindow(ctk.CTk):
 
     def _save_prefs(self) -> None:
         self._prefs = Prefs(path=self._path.get(), columns=self._chosen(), titles=self._titles(),
-                            auto_send=self._prefs.auto_send)
+                            auto_send=bool(self._auto.get()))
         try:
             save_prefs(self._prefs)
         except OSError:
@@ -275,7 +290,49 @@ class SendSheetWindow(ctk.CTk):
     # SENDING
     # ------------------------------------------------------------------
 
-    def _send(self, preview: bool = False) -> None:
+    def _mtime(self) -> float | None:
+        try:
+            return os.stat(self._path.get()).st_mtime
+        except OSError:  # no file chosen, or missing for a moment while Excel saves it
+            return None
+
+    def _on_auto_toggle(self) -> None:
+        self._save_prefs()
+        if self._auto.get():
+            self._start_watching()
+        else:
+            self._stop_watching()
+
+    def _start_watching(self) -> None:
+        """From the sheet as it is now: turning it on doesn't send a save made before."""
+        self._stop_watching()
+        self._watcher = ChangeWatcher(sent_mtime=self._mtime())
+        self._watch_job = self.after(_WATCH_MS, self._watch)
+
+    def _stop_watching(self) -> None:
+        if self._watch_job is not None:
+            self.after_cancel(self._watch_job)
+            self._watch_job = None
+        self._watcher = None
+
+    def _watch(self) -> None:
+        self._watch_job = None
+        if self._watcher is None:
+            return
+        delay = _WATCH_MS
+        if not self._sending:  # a send in progress: look again at the next check
+            action = self._watcher.tick(self._mtime())
+            if action == "confirm":
+                delay = _CONFIRM_MS
+            elif action == "send":
+                self._send(auto=True)
+        self._watch_job = self.after(delay, self._watch)
+
+    def destroy(self) -> None:
+        self._stop_watching()
+        super().destroy()
+
+    def _send(self, preview: bool = False, auto: bool = False) -> None:
         if self._sending:
             return
         chosen = self._chosen()
@@ -288,6 +345,7 @@ class SendSheetWindow(ctk.CTk):
         path, titles = self._path.get(), self._titles()
 
         self._sending = True
+        self._auto_running = auto
         self._btn_preview.configure(state="disabled", text="Conferindo…" if preview else "Conferir sem enviar")
         self._btn_send.configure(state="disabled", text="Enviar agora" if preview else "Enviando…")
 
@@ -302,8 +360,11 @@ class SendSheetWindow(ctk.CTk):
         self._btn_preview.configure(state="normal", text="Conferir sem enviar")
         self._btn_send.configure(state="normal", text="Enviar agora")
         if result.columns_changed:
-            # Reload the menus from the new header, so the user checks the columns before trying again
+            # Reload the menus from the new header, so the user checks the columns before trying again.
+            # Not retried automatically: the reloaded columns wait for the user's next save or click.
             self._open_sheet(self._path.get(), keep_columns=True)
+        elif self._auto_running and result.error and self._watcher is not None:
+            self._watcher.retry()  # e.g. no internet: the same save goes again at the next checks
         planned = result.new + result.updated
         if result.preview and not result.error:
             message = (f"Ao enviar, {planned} {'linha vai' if planned == 1 else 'linhas vão'} para a tabela."
@@ -318,6 +379,8 @@ class SendSheetWindow(ctk.CTk):
         else:
             when = sent_label(result.finished_at, datetime.now().astimezone())
             message = "" if planned else "Nada mudou desde o último envio."
+            if self._auto_running:
+                message = " ".join(filter(None, ["Enviado sozinho ao salvar a planilha.", message]))
             self._show_result_card(Tone.OK, f"Último envio: {when}", message=message, result=result)
 
     def _show_result_card(self, tone: Tone, title: str, message: str = "", result: SyncResult | None = None) -> None:
