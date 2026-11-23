@@ -4,12 +4,14 @@ Todas as mudanças relevantes do projeto ficam registradas aqui.
 
 O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/). As versões anteriores à 2.0.0 estão descritas nas [releases do GitHub](https://github.com/The-Souza/consulta-nfe-cte/releases).
 
-## [2.0.0-alpha.4] — em andamento
+## [2.0.0-alpha.4] — 2026-11-23
 
 ### Adicionado
 - Utilitário **Enviar planilha** (`enviar-planilha.exe`), separado do app e usado só no PC de quem mantém a planilha de entregas. Ele lê a planilha `.xlsx` e atualiza a tabela de motoristas e datas que a Consulta usa, gravando só as NF-es novas e as que mudaram. Nada é apagado.
 - Enviar planilha: as colunas de NF-e, motorista, data de entrega e CT-e (opcional) são sugeridas pelo título do cabeçalho e ficam salvas. Linhas só com CT-e entram como carregamento com XML único, e "S/D" conta como célula vazia.
 - Enviar planilha: "Conferir sem enviar" mostra quantas linhas seriam novas, atualizadas e ignoradas, sem gravar nada. O resultado do envio traz as linhas ignoradas com o número e o motivo, como "sem motorista (linhas 10.488 e 10.491)".
+- Enviar planilha: "Enviar sozinho quando eu salvar a planilha" confere a planilha a cada 30 segundos e envia uns 35 segundos depois de ela ser salva. Se o envio falhar, como sem internet, tenta de novo nas conferências seguintes.
+- Enviar planilha: as colunas escolhidas são conferidas pelo título do cabeçalho antes de cada envio. Se uma coluna foi inserida ou renomeada, ou se o título está repetido ou vazio, nada é enviado e a tela pede para conferir as colunas. Assim, uma coluna fora do lugar não grava dados errados na tabela.
 - Enviar planilha: a configuração fica em `enviar_planilha.env`, com a chave secreta do Supabase, separada do `.env` do app. O build é feito pelo `build_enviar.ps1`.
 
 ### Alterado
