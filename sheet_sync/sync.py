@@ -23,9 +23,11 @@ class SyncResult:
     written: int = 0  # rows that reached the table; less than new + updated when the send failed halfway
     ignored: list[Ignored] = field(default_factory=list)
     error: str | None = None  # screen text; never carries the key
+    preview: bool = False  # counted only, nothing was written
 
 
-def _config_error(config: SyncConfig) -> str | None:
+def config_error(config: SyncConfig) -> str | None:
+    """What blocks a send in enviar_planilha.env, as screen text; the window shows it before any click."""
     if config.missing:
         return f"Falta preencher em enviar_planilha.env: {', '.join(config.missing)}."
     if config.read_only_key:
@@ -35,12 +37,13 @@ def _config_error(config: SyncConfig) -> str | None:
 
 
 def sync(path: Path | str, columns: Columns, config: SyncConfig, session: requests.Session | None = None,
-         now: datetime | None = None) -> SyncResult:
-    """Never raises for the expected failures: they come back in `error`, with whatever was done until then."""
+         now: datetime | None = None, preview: bool = False) -> SyncResult:
+    """Never raises for the expected failures: they come back in `error`, with whatever was done until then.
+    `preview` reads the sheet and the table and counts the changes, without writing anything."""
     now = now or datetime.now(timezone.utc)
     path = Path(path)
 
-    error = _config_error(config)
+    error = config_error(config)
     if error:
         return SyncResult(finished_at=now, error=error)
 
@@ -61,6 +64,9 @@ def sync(path: Path | str, columns: Columns, config: SyncConfig, session: reques
         return SyncResult(finished_at=now, ignored=ignored, error=str(supabase_error))
 
     changes = compare(entries, stored)
+    if preview:
+        return SyncResult(finished_at=now, new=len(changes.new), updated=len(changes.updated),
+                          unchanged=changes.unchanged, ignored=ignored, preview=True)
     sent = send(changes, config, session, now)
     return SyncResult(
         finished_at=now, new=len(changes.new), updated=len(changes.updated), unchanged=changes.unchanged,

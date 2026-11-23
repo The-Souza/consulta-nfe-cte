@@ -60,6 +60,17 @@ def test_sync_sends_only_what_changed(tmp_path):
 
 
 @responses.activate
+def test_a_preview_counts_the_changes_without_writing(tmp_path):
+    responses.get(TABLE, json=STORED)
+
+    result = sync(_sheet(tmp_path, ROWS), COLUMNS, CONFIG, now=NOW, preview=True)
+
+    assert result == SyncResult(finished_at=NOW, new=1, updated=1, unchanged=1, written=0,
+                                ignored=[Ignored(5, "sem motorista")], preview=True)
+    assert _posts() == []
+
+
+@responses.activate
 def test_sync_with_nothing_changed_reads_but_does_not_write(tmp_path):
     responses.get(TABLE, json=STORED[:1])
 
