@@ -8,7 +8,7 @@ from drivers import DriverLookup, sheet_status
 from ui import theme
 from ui.icons import get_icon
 from ui.widgets.banner import Banner
-from ui.widgets.buttons import restore_button, show_cancel
+from ui.widgets.buttons import restore_button, set_enabled, show_cancel
 from ui.widgets.side_panel import SidePanel
 from ui.widgets.filter_chips import FilterChips
 from ui.widgets.history import HistoryPanel
@@ -158,10 +158,14 @@ class SearchFrame(ctk.CTkFrame):
         self.table = ResultsTable(inner)
         self.table.pack(fill="both", expand=True)
 
+    def _enable_export(self, enabled: bool) -> None:
+        set_enabled(self.btn_export, enabled, "download")
+
     def _build_footer(self, main: ctk.CTkFrame) -> None:
         bar = ctk.CTkFrame(main, fg_color=theme.TRANSPARENT)
         bar.pack(side="bottom", fill="x")
-        self.btn_export = _primary_button(bar, _EXPORT[0], "download", self._export, state="disabled")
+        self.btn_export = _primary_button(bar, _EXPORT[0], "download", self._export)
+        self._enable_export(False)
         self.btn_export.pack(side="right", anchor="n")
         self.lbl_export = ctk.CTkLabel(
             bar, text=_EXPORT[1], text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM),
@@ -372,7 +376,7 @@ class SearchFrame(ctk.CTkFrame):
         set_message(self.lbl_progress, "")
         self.progressbar.set(0)
         self.btn_clear.configure(state="disabled")
-        self.btn_export.configure(state="disabled")
+        self._enable_export(False)
         self._btn_search_style = show_cancel(self.btn_search, self._cancel)
 
         def finish(**kwargs):
@@ -476,7 +480,7 @@ class SearchFrame(ctk.CTkFrame):
             self._render()
         self._show_connection_banner()
         if self._results:
-            self.btn_export.configure(state="normal")
+            self._enable_export(True)
             self._save_history(query, update=retry)
 
     def _show_connection_banner(self) -> None:
@@ -501,7 +505,7 @@ class SearchFrame(ctk.CTkFrame):
         self._reset_view()
         set_message(self.lbl_progress, "")
         self.progressbar.set(0)
-        self.btn_export.configure(state="disabled")
+        self._enable_export(False)
         self.entry_query.focus()
 
     def _export(self) -> None:
@@ -564,4 +568,4 @@ class SearchFrame(ctk.CTkFrame):
         self._show_connection_banner()
         set_message(self.lbl_progress, f"Histórico: {entry['label']}")
         self.progressbar.set(1)
-        self.btn_export.configure(state="normal")
+        self._enable_export(True)

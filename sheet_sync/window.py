@@ -30,6 +30,8 @@ from ui import theme
 from ui.icons import get_icon
 from ui.titlebar import apply_titlebar
 from ui.widgets.banner import Banner
+from ui.widgets.buttons import set_enabled
+from ui.widgets.select import Select
 from utils.status import Tone
 
 logger = logging.getLogger(__name__)
@@ -73,8 +75,8 @@ class SendSheetWindow(ctk.CTk):
         problem = config_error(self._config)
         if problem:
             self._config_banner.show(Tone.ERROR, problem, icon="x")
-            for widget in (self._btn_send, self._btn_preview, self._auto):
-                widget.configure(state="disabled")
+            self._enable_buttons(False)
+            self._auto.configure(state="disabled")
         path = self._prefs.path or self._config.sheet_path
         if path:
             self._open_sheet(path, keep_columns=True)
@@ -139,11 +141,13 @@ class SendSheetWindow(ctk.CTk):
         buttons = ctk.CTkFrame(main, fg_color=theme.TRANSPARENT)
         buttons.pack(side="bottom", fill="x")
         # Counts what a send would write, without writing: a safe first look at a sheet
+        preview_font = theme.font(theme.FONT_SIZE_BODY)
         self._btn_preview = ctk.CTkButton(
             buttons, text="Conferir sem enviar", image=get_icon("file-search", 16, theme.TEXT), compound="left",
-            width=0, height=44, corner_radius=theme.RADIUS_INPUT, fg_color=theme.TRANSPARENT,
-            hover_color=theme.SURFACE_2, border_width=1, border_color=theme.BORDER_INPUT, text_color=theme.TEXT,
-            font=theme.font(theme.FONT_SIZE_BODY), command=lambda: self._send(preview=True),
+            # Fixed width: "Conferindo…" is shorter, and an auto-sized button would shrink and pull "Enviar agora"
+            width=preview_font.measure("Conferir sem enviar") + 56, height=44, corner_radius=theme.RADIUS_INPUT,
+            fg_color=theme.TRANSPARENT, hover_color=theme.SURFACE_2, border_width=1, border_color=theme.BORDER_INPUT,
+            text_color=theme.TEXT, font=preview_font, command=lambda: self._send(preview=True),
         )
         self._btn_preview.pack(side="left", padx=(0, theme.SPACE_SM))
         self._btn_send = ctk.CTkButton(
@@ -184,21 +188,14 @@ class SendSheetWindow(ctk.CTk):
                      font=theme.font(theme.FONT_SIZE_SM, "bold")).grid(row=0, column=0, columnspan=2, sticky="w")
         inner.grid_columnconfigure((0, 1), weight=1, uniform="col")
 
-        self._menus: dict[str, ctk.CTkOptionMenu] = {}
+        self._menus: dict[str, Select] = {}
         for index, field in enumerate(("nfe", "driver", "date", "cte")):
             cell = ctk.CTkFrame(inner, fg_color=theme.TRANSPARENT)
             cell.grid(row=1 + index // 2, column=index % 2, sticky="ew", pady=(theme.SPACE_SM, 0),
                       padx=(0, theme.SPACE_SM) if index % 2 == 0 else 0)
             ctk.CTkLabel(cell, text=_FIELD_LABELS[field], text_color=theme.TEXT_LABEL, anchor="w", height=16,
                          font=theme.font(theme.FONT_SIZE_SM)).pack(fill="x", pady=(0, theme.SPACE_XS))
-            menu = ctk.CTkOptionMenu(
-                cell, values=[_CHOOSE], height=34, corner_radius=theme.RADIUS_INPUT, fg_color=theme.INPUT_BG,
-                button_color=theme.INPUT_BG, button_hover_color=theme.SURFACE_2, text_color=theme.TEXT,
-                dropdown_fg_color=theme.SURFACE, dropdown_hover_color=theme.SURFACE_2, dropdown_text_color=theme.TEXT,
-                font=theme.font(theme.FONT_SIZE_BODY), dropdown_font=theme.font(theme.FONT_SIZE_BODY),
-                dynamic_resizing=False, command=lambda _value: self._on_column_picked(),
-            )
-            menu.set(_CHOOSE)
+            menu = Select(cell, placeholder=_CHOOSE, command=lambda _value: self._on_column_picked())
             menu.pack(fill="x")
             self._menus[field] = menu
 
@@ -267,7 +264,7 @@ class SendSheetWindow(ctk.CTk):
         by_letter = {letter_of(option): option for option in self._options}
         for field, menu in self._menus.items():
             values = ([NO_COLUMN] if field == "cte" else []) + self._options
-            menu.configure(values=values or [_CHOOSE])
+            menu.set_values(values)
             default = NO_COLUMN if field == "cte" else _CHOOSE
             menu.set(by_letter.get(chosen.get(field), default))
         if error and keep_columns:
@@ -360,6 +357,10 @@ class SendSheetWindow(ctk.CTk):
         self._stop_watching()
         super().destroy()
 
+    def _enable_buttons(self, enabled: bool) -> None:
+        set_enabled(self._btn_preview, enabled, "file-search", color=theme.TEXT)
+        set_enabled(self._btn_send, enabled, "upload")
+
     def _send(self, preview: bool = False, auto: bool = False) -> None:
         if self._sending:
             return
@@ -375,8 +376,9 @@ class SendSheetWindow(ctk.CTk):
         self._sending = True
         self._auto_running = auto
         self._send_watcher = self._watcher if auto else None
-        self._btn_preview.configure(state="disabled", text="Conferindo…" if preview else "Conferir sem enviar")
-        self._btn_send.configure(state="disabled", text="Enviar agora" if preview else "Enviando…")
+        self._btn_preview.configure(text="Conferindo…" if preview else "Conferir sem enviar")
+        self._btn_send.configure(text="Enviar agora" if preview else "Enviando…")
+        self._enable_buttons(False)
         # No other sheet while this one is sent: its result would land on the new sheet's columns
         self._btn_change.configure(state="disabled")
 
@@ -388,8 +390,9 @@ class SendSheetWindow(ctk.CTk):
 
     def _finish(self, result: SyncResult) -> None:
         self._sending = False
-        self._btn_preview.configure(state="normal", text="Conferir sem enviar")
-        self._btn_send.configure(state="normal", text="Enviar agora")
+        self._btn_preview.configure(text="Conferir sem enviar")
+        self._btn_send.configure(text="Enviar agora")
+        self._enable_buttons(True)
         self._btn_change.configure(state="normal")
         if result.columns_changed:
             # Reload the menus from the new header; they stay unconfirmed, so the automatic send waits for

@@ -22,3 +22,12 @@ def show_cancel(button: ctk.CTkButton, command: Callable) -> dict:
 
 def restore_button(button: ctk.CTkButton, previous: dict) -> None:
     button.configure(**previous)
+
+
+def set_enabled(button: ctk.CTkButton, enabled: bool, icon: str, color: str = theme.TEXT_ON_PRIMARY,
+                size: int = 16) -> None:
+    """CTkButton dims the text of a disabled button but leaves its image as it was: dim the icon too."""
+    button.configure(
+        state="normal" if enabled else "disabled", text_color_disabled=theme.TEXT_MUTED,
+        image=get_icon(icon, size, color if enabled else theme.TEXT_MUTED),
+    )
