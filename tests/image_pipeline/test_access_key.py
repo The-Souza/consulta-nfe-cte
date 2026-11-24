@@ -1,22 +1,7 @@
 import pytest
 
 from image_pipeline.access_key import find_key, is_valid_key, nfe_from_key
-
-# Fictitious issuer data: no real CNPJ or key may be committed (public repo).
-FAKE_CNPJ = "11222333000181"
-
-
-def check_digit(body: str) -> int:
-    total = sum(int(d) * (2 + i % 8) for i, d in enumerate(reversed(body)))
-    remainder = total % 11
-    return 0 if remainder < 2 else 11 - remainder
-
-
-def make_key(nfe: int = 4406833, model: str = "55", code: str = "12345678") -> str:
-    # cUF + AAMM + CNPJ + model + series + nNF + tpEmis + cNF
-    body = "35" + "2610" + FAKE_CNPJ + model + "001" + f"{nfe:09d}" + "1" + code
-    assert len(body) == 43
-    return body + str(check_digit(body))
+from tests.image_pipeline.fakes import make_key
 
 
 def with_wrong_digit(key: str) -> str:
