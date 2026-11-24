@@ -4,7 +4,7 @@ Todas as mudanças relevantes do projeto ficam registradas aqui.
 
 O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/). As versões anteriores à 2.0.0 estão descritas nas [releases do GitHub](https://github.com/The-Souza/consulta-nfe-cte/releases).
 
-## [Não lançado]
+## [2.0.0-alpha.5] — em andamento
 
 ### Corrigido
 - Enviar planilha: a lista dos menus de coluna abre com a largura do campo e nas cores do app, sem a moldura branca do Windows. Ela destaca a coluna atual e rola quando há muitas colunas. O campo ganha borda e cantos arredondados, como o do arquivo.
