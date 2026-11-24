@@ -112,6 +112,14 @@ class TestBrokenFiles:
         assert result.error
         assert result.nfe is None and result.upright is None
 
+    def test_an_empty_file_is_reported_not_raised(self, tmp_path, ocr_reads):
+        ocr_reads()
+        path = tmp_path / "foto.jpg"
+        path.write_bytes(b"")
+        result = process(path)
+        assert result.error == "O arquivo não é uma imagem."
+        assert result.nfe is None and result.upright is None
+
     def test_a_missing_file_is_reported_not_raised(self, tmp_path, ocr_reads):
         ocr_reads()
         result = process(tmp_path / "missing.jpg")
@@ -152,10 +160,11 @@ class TestBatch:
         results = process_batch(self.photos(tmp_path), stop_event=stop, on_progress=lambda *_: stop.set())
         assert len(results) == 1
 
-    def test_a_broken_photo_does_not_stop_the_batch(self, tmp_path, ocr_reads):
+    @pytest.mark.parametrize("content", [b"broken", b""], ids=["not-an-image", "empty"])
+    def test_a_broken_photo_does_not_stop_the_batch(self, tmp_path, ocr_reads, content):
         ocr_reads()
         paths = self.photos(tmp_path)
-        paths[1].write_text("broken")
+        paths[1].write_bytes(content)
         results = process_batch(paths)
         assert [r.nfe for r in results] == [1, None, 3]
         assert results[1].error

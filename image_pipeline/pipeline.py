@@ -41,7 +41,10 @@ class CanhotoResult:
 
 def _open(path: Path) -> np.ndarray | None:
     # np.fromfile + imdecode: cv2.imread fails on Windows paths with accents.
-    return cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_COLOR)
+    data = np.fromfile(str(path), dtype=np.uint8)
+    if data.size == 0:  # imdecode raises on an empty buffer (a failed copy leaves 0-byte files)
+        return None
+    return cv2.imdecode(data, cv2.IMREAD_COLOR)
 
 
 def _from_qr(result: CanhotoResult, img: np.ndarray, read: QrRead) -> None:
