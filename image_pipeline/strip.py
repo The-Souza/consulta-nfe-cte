@@ -5,6 +5,8 @@ distance from the QR on each stub. The QR corners, though, are found in every ph
 read, so the strip is a fixed window around the QR, measured in QR sides.
 """
 
+from dataclasses import dataclass
+
 import cv2
 import numpy as np
 
@@ -35,6 +37,14 @@ _QR_TARGET = np.float32([
 _WHITE = (255, 255, 255)
 
 
+@dataclass(frozen=True)
+class StubStrip:
+    image: np.ndarray
+    # First column where most pixels came from the photo; to its left the window fell outside the
+    # photo and was filled with white.
+    first_col: int
+
+
 def upright(img: np.ndarray, rotation: int) -> np.ndarray:
     """Undoes a clockwise turn of 0, 90, 180 or 270 degrees, without resampling."""
     if rotation == 0:
@@ -51,7 +61,14 @@ def _brighten(img: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
 
-def straighten(img: np.ndarray, qr_points: np.ndarray) -> np.ndarray:
+def _first_photo_col(matrix: np.ndarray, photo_shape: tuple[int, ...]) -> int:
+    inside = np.full(photo_shape[:2], 255, np.uint8)
+    mask = cv2.warpPerspective(inside, matrix, (STRIP_W, STRIP_H), flags=cv2.INTER_NEAREST, borderValue=0)
+    cols = np.flatnonzero((mask > 0).mean(axis=0) >= 0.5)
+    return int(cols[0]) if cols.size else 0
+
+
+def straighten(img: np.ndarray, qr_points: np.ndarray) -> StubStrip:
     """The stub strip, upright and flat, from the QR corners in the code's own order.
 
     Mapping the corners to fixed places undoes turn, tilt and perspective at once.
@@ -59,12 +76,13 @@ def straighten(img: np.ndarray, qr_points: np.ndarray) -> np.ndarray:
     if img.ndim == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     matrix = cv2.getPerspectiveTransform(qr_points.astype(np.float32).reshape(4, 2), _QR_TARGET)
-    strip = cv2.warpPerspective(
+    image = cv2.warpPerspective(
         img, matrix, (STRIP_W, STRIP_H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=_WHITE
     )
-    return _brighten(strip)
+    return StubStrip(_brighten(image), _first_photo_col(matrix, img.shape))
 
 
-def receipt_area(strip: np.ndarray) -> np.ndarray:
-    """Everything left of the QR: the delivery date and the receiver's signature."""
-    return strip[:, : QR_LEFT - RECEIPT_MARGIN]
+def receipt_area(strip: StubStrip) -> np.ndarray:
+    """Everything left of the QR that came from the photo: the delivery date and the signature."""
+    end = QR_LEFT - RECEIPT_MARGIN
+    return strip.image[:, min(strip.first_col, end - 1): end]
