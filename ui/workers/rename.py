@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 import cv2
+import numpy as np
 
 import image_pipeline
 
@@ -21,15 +22,30 @@ def _free_path(path: Path) -> Path:
     return candidate
 
 
+def _write_file(data: np.ndarray, path: Path) -> None:
+    # tofile: cv2.imwrite fails on Windows paths with accents.
+    data.tofile(str(path))
+
+
 def _save_upright(result: image_pipeline.CanhotoResult, target: Path, originals: Path) -> None:
-    """Writes the photo turned back into position, then moves the photo as it arrived to `originals`."""
+    """Writes the photo turned back into position and moves the photo as it arrived to `originals`.
+
+    Either both happen or neither: the image goes to a `.part` file (never listed by the upload step,
+    which reads image extensions only) and becomes `target` only after the original is moved. A cut-off
+    `target` would be uploaded, and the portal does not accept a second image for the same stub.
+    """
     ok, data = cv2.imencode(".jpg", result.upright, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
     if not ok:
         raise OSError(f"could not encode {result.path.name}")
-    # tofile: cv2.imwrite fails on Windows paths with accents.
-    data.tofile(str(target))
-    originals.mkdir(exist_ok=True)
-    shutil.move(str(result.path), str(_free_path(originals / result.path.name)))
+    partial = target.with_name(target.name + ".part")
+    try:
+        _write_file(data, partial)
+        originals.mkdir(exist_ok=True)
+        shutil.move(str(result.path), str(_free_path(originals / result.path.name)))
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
+    os.replace(partial, target)
 
 
 class RenameWorker:
@@ -79,7 +95,7 @@ class RenameWorker:
     @staticmethod
     def _rename(path: Path, output: Path, originals: Path) -> tuple[str | None, str]:
         result = image_pipeline.process(path)
-        # Without Tesseract the number was never tried: report it as an error, as before the pipeline.
+        # Without Tesseract the number was never tried, so it is an error, not "not found".
         if result.error or result.ocr_unavailable:
             return None, "erro"
         if result.nfe is None:

@@ -88,6 +88,12 @@ class TestRenamed:
         assert (tmp_path / "renomeadas" / "originais" / "a.jpg").read_bytes() == original
         assert not (tmp_path / "a.jpg").exists()
 
+    def test_a_turned_photo_leaves_no_temporary_file(self, tmp_path, results):
+        write_photo(tmp_path / "a.jpg")
+        results["a.jpg"] = read(nfe=4406833, rotation=90)
+        Run(tmp_path)
+        assert sorted(p.name for p in (tmp_path / "renomeadas").iterdir()) == ["4406833.jpg", "originais"]
+
     def test_an_original_with_the_same_name_is_not_overwritten(self, tmp_path, results):
         kept = tmp_path / "renomeadas" / "originais"
         kept.mkdir(parents=True)
@@ -126,6 +132,40 @@ class TestNotRenamed:
         assert run.statuses == [("a.jpg", "4406833", "duplicata")]
         assert (tmp_path / "renomeadas" / "4406833.jpg").read_bytes() == b"first"
         assert (tmp_path / "a.jpg").exists()
+
+
+class TestTurnedPhotoFailures:
+    """A turned photo must end up either fully renamed or untouched, never half-way: the portal does not
+    accept a second image for the same stub, so a cut-off <nfe>.jpg cannot be sent."""
+
+    def assert_untouched(self, tmp_path, original: bytes, run: Run):
+        assert run.statuses == [("a.jpg", None, "erro")]
+        assert (tmp_path / "a.jpg").read_bytes() == original
+        assert [p.name for p in (tmp_path / "renomeadas").iterdir() if p.is_file()] == []
+
+    def test_original_that_cannot_be_moved(self, tmp_path, results, monkeypatch):
+        original = write_photo(tmp_path / "a.jpg")
+        results["a.jpg"] = read(nfe=4406833, rotation=90)
+        real_move = rename.shutil.move
+
+        def locked(src, dst):
+            if "originais" in str(dst):
+                raise PermissionError("locked by another program")
+            return real_move(src, dst)
+
+        monkeypatch.setattr(rename.shutil, "move", locked)
+        self.assert_untouched(tmp_path, original, Run(tmp_path))
+
+    def test_disk_full_while_writing(self, tmp_path, results, monkeypatch):
+        original = write_photo(tmp_path / "a.jpg")
+        results["a.jpg"] = read(nfe=4406833, rotation=90)
+
+        def half_written(data, path):
+            Path(path).write_bytes(b"\xff\xd8 cut")
+            raise OSError("no space left on device")
+
+        monkeypatch.setattr(rename, "_write_file", half_written)
+        self.assert_untouched(tmp_path, original, Run(tmp_path))
 
 
 class TestRun:
