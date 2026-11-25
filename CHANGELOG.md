@@ -4,7 +4,12 @@ Todas as mudanças relevantes do projeto ficam registradas aqui.
 
 O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/). As versões anteriores à 2.0.0 estão descritas nas [releases do GitHub](https://github.com/The-Souza/consulta-nfe-cte/releases).
 
-## [2.0.0-alpha.5] — em andamento
+## [2.0.0-alpha.5] — 2026-11-25
+
+### Alterado
+- Upload: o Renomear lê a NF-e pelo QR code do canhoto, que traz a chave de acesso e é conferida pelo dígito verificador. É mais rápido e não erra o número. A leitura do número impresso (OCR) fica só para quando o QR não pode ser lido.
+- Upload: fotos que chegam na vertical ou de cabeça para baixo são gravadas já na posição certa, sem precisar girar à mão antes de renomear. A foto como chegou fica guardada em `renomeadas/originais/`.
+- Upload: o Renomear processa as fotos em ordem alfabética, como o envio.
 
 ### Corrigido
 - Enviar planilha: a lista dos menus de coluna abre com a largura do campo e nas cores do app, sem a moldura branca do Windows. Ela destaca a coluna atual e rola quando há muitas colunas. O campo ganha borda e cantos arredondados, como o do arquivo.
