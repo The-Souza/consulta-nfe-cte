@@ -156,6 +156,17 @@ class TestTurnedPhotoFailures:
         monkeypatch.setattr(rename.shutil, "move", locked)
         self.assert_untouched(tmp_path, original, Run(tmp_path))
 
+    def test_final_rename_that_fails_puts_the_original_back(self, tmp_path, results, monkeypatch):
+        original = write_photo(tmp_path / "a.jpg")
+        results["a.jpg"] = read(nfe=4406833, rotation=90)
+
+        def held(_src, _dst):
+            raise PermissionError("held by an antivirus scan")
+
+        monkeypatch.setattr(rename.os, "replace", held)
+        self.assert_untouched(tmp_path, original, Run(tmp_path))
+        assert not any((tmp_path / "renomeadas" / "originais").iterdir())
+
     def test_disk_full_while_writing(self, tmp_path, results, monkeypatch):
         original = write_photo(tmp_path / "a.jpg")
         results["a.jpg"] = read(nfe=4406833, rotation=90)

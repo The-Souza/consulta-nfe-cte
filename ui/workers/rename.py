@@ -38,14 +38,17 @@ def _save_upright(result: image_pipeline.CanhotoResult, target: Path, originals:
     if not ok:
         raise OSError(f"could not encode {result.path.name}")
     partial = target.with_name(target.name + ".part")
+    kept = _free_path(originals / result.path.name)
     try:
         _write_file(data, partial)
         originals.mkdir(exist_ok=True)
-        shutil.move(str(result.path), str(_free_path(originals / result.path.name)))
+        shutil.move(str(result.path), str(kept))
+        os.replace(partial, target)
     except BaseException:
         partial.unlink(missing_ok=True)
+        if kept.exists() and not result.path.exists():
+            shutil.move(str(kept), str(result.path))
         raise
-    os.replace(partial, target)
 
 
 class RenameWorker:
