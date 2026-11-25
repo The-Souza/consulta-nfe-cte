@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from image_pipeline.quality import COMPARABLE_SIDE, comparable_sharpness, sharpness
+from tests.image_pipeline.fakes import make_key, make_photo, make_stub
 
 
 def checkerboard(size: int = 200, square: int = 10) -> np.ndarray:
@@ -50,12 +51,17 @@ class TestComparable:
 
     def test_measures_the_photo_resized_to_the_comparable_side(self):
         img = checkerboard(400)
-        resized = cv2.resize(img, (COMPARABLE_SIDE, COMPARABLE_SIDE), interpolation=cv2.INTER_AREA)
+        resized = cv2.resize(img, (COMPARABLE_SIDE, COMPARABLE_SIDE), interpolation=cv2.INTER_LINEAR)
         assert comparable_sharpness(img) == sharpness(resized)
+
+    def test_a_larger_photo_is_shrunk_with_area_interpolation(self):
+        big = stripes(1800, 3200)
+        resized = cv2.resize(big, (COMPARABLE_SIDE, 900), interpolation=cv2.INTER_AREA)
+        assert comparable_sharpness(big) == sharpness(resized)
 
     def test_keeps_the_aspect_ratio(self):
         wide = stripes(100, 400)
-        resized = cv2.resize(wide, (COMPARABLE_SIDE, COMPARABLE_SIDE // 4), interpolation=cv2.INTER_AREA)
+        resized = cv2.resize(wide, (COMPARABLE_SIDE, COMPARABLE_SIDE // 4), interpolation=cv2.INTER_LINEAR)
         assert comparable_sharpness(wide) == sharpness(resized)
 
     def test_a_portrait_and_a_landscape_copy_score_the_same(self):
@@ -64,10 +70,17 @@ class TestComparable:
         standing = cv2.rotate(lying, cv2.ROTATE_90_CLOCKWISE)
         assert comparable_sharpness(standing) == pytest.approx(comparable_sharpness(lying), rel=1e-6)
 
-    def test_a_smaller_copy_is_scaled_by_its_longer_side(self):
+    def test_a_smaller_copy_is_enlarged_smoothly_by_its_longer_side(self):
         tall = stripes(400, 100)
-        resized = cv2.resize(tall, (COMPARABLE_SIDE // 4, COMPARABLE_SIDE), interpolation=cv2.INTER_AREA)
+        resized = cv2.resize(tall, (COMPARABLE_SIDE // 4, COMPARABLE_SIDE), interpolation=cv2.INTER_LINEAR)
         assert comparable_sharpness(tall) == sharpness(resized)
+
+    def test_enlarging_does_not_invent_sharp_edges(self):
+        """A half-size copy (a forwarded thumbnail) lost detail: it must score well below the original,
+        not be inflated by the hard pixel blocks of a nearest-like enlargement."""
+        photo = make_photo(make_stub(make_key()))
+        half = cv2.resize(photo, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+        assert comparable_sharpness(half) < 0.5 * comparable_sharpness(photo)
 
     def test_the_blurred_copy_still_scores_lower(self):
         img = checkerboard(400)

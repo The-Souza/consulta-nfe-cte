@@ -25,4 +25,7 @@ def comparable_sharpness(img: np.ndarray) -> float:
     height, width = gray.shape
     scale = COMPARABLE_SIDE / max(height, width)
     size = (round(width * scale), round(height * scale))
-    return sharpness(cv2.resize(gray, size, interpolation=cv2.INTER_AREA))
+    # INTER_AREA enlarges almost like nearest neighbour: its hard pixel blocks would read as sharp edges and
+    # inflate a small copy. It is only right for shrinking.
+    interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+    return sharpness(cv2.resize(gray, size, interpolation=interpolation))
