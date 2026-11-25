@@ -3,9 +3,10 @@
 import cv2
 import numpy as np
 
-# The width WhatsApp sends photos at. The Laplacian variance changes with the image size, so two shots are
-# only comparable when measured at the same width.
-COMPARABLE_WIDTH = 1600
+# The longer side WhatsApp sends photos at. The Laplacian variance changes with the image size, so two shots
+# are only comparable at the same size. The longer side is used, not the width: a photo left as it arrived
+# may be standing or lying down, and fixing the width would enlarge (and soften) the standing one.
+COMPARABLE_SIDE = 1600
 
 
 def _gray(img: np.ndarray) -> np.ndarray:
@@ -18,9 +19,10 @@ def sharpness(img: np.ndarray) -> float:
 
 
 def comparable_sharpness(img: np.ndarray) -> float:
-    """Sharpness of the whole photo resized to COMPARABLE_WIDTH, so a photo read by QR and its duplicate read
-    by OCR are measured the same way (#38)."""
+    """Sharpness of the whole photo with its longer side resized to COMPARABLE_SIDE, so a photo read by QR and
+    its duplicate read by OCR are measured the same way (#38)."""
     gray = _gray(img)
     height, width = gray.shape
-    size = (COMPARABLE_WIDTH, round(height * COMPARABLE_WIDTH / width))
+    scale = COMPARABLE_SIDE / max(height, width)
+    size = (round(width * scale), round(height * scale))
     return sharpness(cv2.resize(gray, size, interpolation=cv2.INTER_AREA))

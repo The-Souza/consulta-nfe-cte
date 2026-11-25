@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
+import pytest
 
-from image_pipeline.quality import COMPARABLE_WIDTH, comparable_sharpness, sharpness
+from image_pipeline.quality import COMPARABLE_SIDE, comparable_sharpness, sharpness
 
 
 def checkerboard(size: int = 200, square: int = 10) -> np.ndarray:
@@ -37,19 +38,36 @@ def test_returns_a_float():
     assert isinstance(sharpness(checkerboard()), float)
 
 
-class TestComparable:
-    """Two photos of the same stub are compared at the same width (#38)."""
+def stripes(height: int, width: int) -> np.ndarray:
+    img = np.zeros((height, width), np.uint8)
+    img[:, ::8] = 255
+    img[::6, :] = 128
+    return img
 
-    def test_measures_the_photo_resized_to_the_comparable_width(self):
+
+class TestComparable:
+    """Two photos of the same stub are compared at the same size of their longer side (#38)."""
+
+    def test_measures_the_photo_resized_to_the_comparable_side(self):
         img = checkerboard(400)
-        resized = cv2.resize(img, (COMPARABLE_WIDTH, COMPARABLE_WIDTH), interpolation=cv2.INTER_AREA)
+        resized = cv2.resize(img, (COMPARABLE_SIDE, COMPARABLE_SIDE), interpolation=cv2.INTER_AREA)
         assert comparable_sharpness(img) == sharpness(resized)
 
     def test_keeps_the_aspect_ratio(self):
-        wide = np.zeros((100, 400), np.uint8)
-        wide[:, ::8] = 255
-        resized = cv2.resize(wide, (COMPARABLE_WIDTH, COMPARABLE_WIDTH // 4), interpolation=cv2.INTER_AREA)
+        wide = stripes(100, 400)
+        resized = cv2.resize(wide, (COMPARABLE_SIDE, COMPARABLE_SIDE // 4), interpolation=cv2.INTER_AREA)
         assert comparable_sharpness(wide) == sharpness(resized)
+
+    def test_a_portrait_and_a_landscape_copy_score_the_same(self):
+        """A photo left as it arrived can be upright or lying down: the turn must not change the score."""
+        lying = stripes(900, 1600)
+        standing = cv2.rotate(lying, cv2.ROTATE_90_CLOCKWISE)
+        assert comparable_sharpness(standing) == pytest.approx(comparable_sharpness(lying), rel=1e-6)
+
+    def test_a_smaller_copy_is_scaled_by_its_longer_side(self):
+        tall = stripes(400, 100)
+        resized = cv2.resize(tall, (COMPARABLE_SIDE // 4, COMPARABLE_SIDE), interpolation=cv2.INTER_AREA)
+        assert comparable_sharpness(tall) == sharpness(resized)
 
     def test_the_blurred_copy_still_scores_lower(self):
         img = checkerboard(400)
