@@ -10,11 +10,14 @@ import threading
 from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 
+import requests
+
 import api
 from conference.photo import SystemInfo
 
 logger = logging.getLogger(__name__)
 
+PENDING = "PENDENTE"  # the only status that takes an image, as in the send step
 APPROVED = "APROVADO"
 # Brazil has no daylight saving time since 2019. A delivery stored as a UTC instant (the app itself sends
 # 12:00Z) is read in Brazilian time, so an instant like 02:00Z still counts as the day before.
@@ -43,7 +46,11 @@ def check(
     client=api,
     now: Callable[[], datetime] = datetime.now,
 ) -> SystemInfo:
-    """Looks the invoice up in the portal. Cancelled and SessionLost reach the caller, which stops."""
+    """Looks the invoice up in the portal. Cancelled and SessionLost reach the caller, which stops.
+
+    A connection failure or any other HTTP error (a 404 or 400 that is not about the session) means the
+    portal could not answer now: "unavailable", so the screen lets the date be typed and asks again later.
+    """
 
     def call(fn: Callable):
         return api.call_with_relogin(fn, relogin)
@@ -53,8 +60,10 @@ def check(
         if oid is None:
             return SystemInfo("not_found", None, now())
         if status == APPROVED:
-            return SystemInfo("approved", None, now())
+            return SystemInfo("approved", None, now(), status)
+        if status != PENDING:
+            return SystemInfo("other", None, now(), status)
         details = call(lambda: client.get_invoice_details(session, oid, stop=stop))
-    except api.ConnectionFailed:
+    except (api.ConnectionFailed, requests.HTTPError):
         return SystemInfo("unavailable", None, now())
-    return SystemInfo("found", _delivery(details), now())
+    return SystemInfo("found", _delivery(details), now(), status)

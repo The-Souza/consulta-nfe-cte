@@ -1,6 +1,7 @@
 from datetime import date, datetime
 
 import pytest
+import requests
 
 import api
 from conference.portal import check
@@ -78,12 +79,28 @@ class TestStates:
     def test_already_approved_skips_the_details(self):
         fake = FakeApi([("abc", "APROVADO")])
         info = run(fake)
-        assert (info.state, info.delivery) == ("approved", None)
+        assert (info.state, info.delivery, info.status) == ("approved", None, "APROVADO")
+        assert [c[0] for c in fake.calls] == ["lookup"]
+
+    def test_a_pending_receipt_keeps_its_status(self):
+        assert run(FakeApi([("abc", "PENDENTE")], [details(None)])).status == "PENDENTE"
+
+    def test_any_other_status_will_not_be_sent_and_skips_the_details(self):
+        """Only PENDENTE takes an image: the review warns before the send step refuses it."""
+        fake = FakeApi([("abc", "EM ANALISE")])
+        info = run(fake)
+        assert (info.state, info.delivery, info.status) == ("other", None, "EM ANALISE")
         assert [c[0] for c in fake.calls] == ["lookup"]
 
     @pytest.mark.parametrize("where", ["lookup", "details"])
     def test_connection_failure_is_unavailable(self, where):
         failure = api.ConnectionFailed("timeout")
+        fake = FakeApi([failure] if where == "lookup" else [("abc", "PENDENTE")], [failure])
+        assert run(fake).state == "unavailable"
+
+    @pytest.mark.parametrize("where", ["lookup", "details"])
+    def test_another_http_error_is_unavailable(self, where):
+        failure = requests.HTTPError("404 Client Error")
         fake = FakeApi([failure] if where == "lookup" else [("abc", "PENDENTE")], [failure])
         assert run(fake).state == "unavailable"
 
