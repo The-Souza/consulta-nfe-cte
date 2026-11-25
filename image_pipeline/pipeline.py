@@ -40,7 +40,7 @@ class CanhotoResult:
     upright: np.ndarray | None = None  # the whole photo in the right position; None if it did not open
     strip: np.ndarray | None = None  # straightened from the QR; None without QR
     receipt_area: np.ndarray | None = None  # date and signature; None without QR
-    sharpness: float = 0.0  # of the upright photo at a fixed width, comparable with or without QR
+    sharpness: float = 0.0  # of the upright photo with its longer side at COMPARABLE_SIDE, with or without QR
     hint: FilenameHint | None = None
     error: str | None = None  # why the photo could not be read
     ocr_unavailable: bool = False  # no QR and Tesseract missing or failing, so the number was not tried

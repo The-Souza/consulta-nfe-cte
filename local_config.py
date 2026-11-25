@@ -30,10 +30,18 @@ def read(path: Path = CONFIG_FILE) -> dict:
 
 
 def write(data: dict, path: Path = CONFIG_FILE) -> None:
-    """Replaces config.json in one step, so a failure halfway never leaves it cut off (it holds the email)."""
+    """Replaces config.json in one step, so a failure halfway never leaves it cut off (it holds the email).
+
+    If the replace fails (on Windows, while another program holds the file), the temporary file is removed:
+    it also holds the email and, in development, sits next to the code of a public repo.
+    """
     partial = path.with_name(path.name + ".tmp")
-    partial.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    os.replace(partial, path)
+    try:
+        partial.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        os.replace(partial, path)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
 
 
 def work_folder(path: Path = CONFIG_FILE) -> Path | None:

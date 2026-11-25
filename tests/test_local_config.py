@@ -32,6 +32,19 @@ class TestRead:
         local_config.write({"a": 1}, config)
         assert [p.name for p in config.parent.iterdir()] == ["config.json"]
 
+    def test_a_failed_write_removes_the_temporary_file_and_keeps_the_old_one(self, config, monkeypatch):
+        """The temporary file holds the email: it must not be left next to the code of a public repo."""
+        local_config.write({"email": "old@example.com"}, config)
+
+        def held(_src, _dst):
+            raise PermissionError("config.json is open in another program")
+
+        monkeypatch.setattr(local_config.os, "replace", held)
+        with pytest.raises(PermissionError):
+            local_config.write({"email": "new@example.com"}, config)
+        assert [p.name for p in config.parent.iterdir()] == ["config.json"]
+        assert local_config.read(config) == {"email": "old@example.com"}
+
 
 class TestWorkFolder:
     def test_none_until_chosen(self, config):

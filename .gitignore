@@ -6,8 +6,8 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Credenciais salvas localmente (contém e-mail do usuário)
-config.json
+# Credenciais salvas localmente (contém e-mail do usuário), inclusive o temporário da gravação
+config.json*
 
 # Variáveis de ambiente (contém URLs e dados internos da empresa)
 .env
