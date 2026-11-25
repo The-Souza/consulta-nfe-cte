@@ -10,7 +10,9 @@ from typing import Literal
 
 NfeSource = Literal["qr", "ocr", "typed"]
 DateSource = Literal["system", "typed"]
-SystemState = Literal["found", "not_found", "approved", "unavailable"]
+# found: PENDENTE, takes an image; approved: APROVADO, takes none; other: any other status, not sent (the
+# briefing's "Status desconhecido"); not_found and unavailable: no answer about the receipt.
+SystemState = Literal["found", "not_found", "approved", "other", "unavailable"]
 
 MAX_NFE = 999_999_999  # nine digits, as printed on the stub
 
@@ -41,6 +43,7 @@ class SystemInfo:
     state: SystemState
     delivery: date | None
     checked_at: datetime
+    status: str | None = None  # the receipt status as the portal wrote it, shown for "other"
 
 
 @dataclass

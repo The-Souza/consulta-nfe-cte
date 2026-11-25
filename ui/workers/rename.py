@@ -9,20 +9,12 @@ import cv2
 import numpy as np
 
 import image_pipeline
+from utils.files import free_path
 
 logger = logging.getLogger(__name__)
 
 _IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png")
 _JPEG_QUALITY = 95
-
-
-def _free_path(path: Path) -> Path:
-    """`path`, or `name (2).ext`, `name (3).ext`... when it already exists. Never overwrites."""
-    candidate, n = path, 2
-    while candidate.exists():
-        candidate = path.with_name(f"{path.stem} ({n}){path.suffix}")
-        n += 1
-    return candidate
 
 
 def _write_file(data: np.ndarray, path: Path) -> None:
@@ -41,7 +33,7 @@ def _save_upright(result: image_pipeline.CanhotoResult, target: Path, originals:
     if not ok:
         raise OSError(f"could not encode {result.path.name}")
     partial = target.with_name(target.name + ".part")
-    kept = _free_path(originals / result.path.name)
+    kept = free_path(originals / result.path.name)
     try:
         _write_file(data, partial)
         originals.mkdir(exist_ok=True)
