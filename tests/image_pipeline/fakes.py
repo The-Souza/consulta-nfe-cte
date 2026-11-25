@@ -3,10 +3,14 @@
 No real CNPJ, key or photo may be committed (public repo), so every test image is drawn here.
 """
 
+from pathlib import Path
+
 import cv2
 import numpy as np
+from PIL import Image
 
 FAKE_CNPJ = "11222333000181"
+EXIF_ORIENTATION = 0x0112
 
 STUB_W, STUB_H = 1800, 300
 PHOTO_W, PHOTO_H = 1600, 900
@@ -47,6 +51,18 @@ def make_stub(key: str | None = None) -> np.ndarray:
         top = (STUB_H - QR_SIZE) // 2
         stub[top:top + QR_SIZE, QR_X:QR_X + QR_SIZE] = qr
     return stub
+
+
+def save_jpeg(path: Path, bgr: np.ndarray, orientation: int | None = None) -> Path:
+    """Writes `bgr` pixels as they are, optionally tagged with an EXIF orientation (as Windows does when a
+    photo is rotated in Explorer: the tag changes, the pixels do not)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image = Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+    exif = image.getexif()
+    if orientation is not None:
+        exif[EXIF_ORIENTATION] = orientation
+    image.save(path, "JPEG", quality=95, exif=exif)
+    return path
 
 
 def make_photo(stub: np.ndarray, angle: float = 0.0, upside_down: bool = False, width: int = 1400) -> np.ndarray:

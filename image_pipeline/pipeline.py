@@ -10,6 +10,7 @@ from typing import Literal
 import cv2
 import numpy as np
 import pytesseract
+from PIL import Image
 
 import ocr
 from image_pipeline.access_key import nfe_from_key
@@ -22,6 +23,11 @@ logger = logging.getLogger(__name__)
 
 NfeSource = Literal["qr", "ocr"]
 ProgressCallback = Callable[[int, int, "CanhotoResult"], None]
+
+_EXIF_ORIENTATION = 0x0112
+# The pixels as stored, without the EXIF orientation tag: the QR then measures how the pixels are turned,
+# which is what matters for a viewer (or the portal) that ignores the tag.
+_RAW_PIXELS = cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION
 
 
 @dataclass(eq=False)
@@ -37,14 +43,29 @@ class CanhotoResult:
     sharpness: float = 0.0  # of the strip, or of the upright photo without QR
     hint: FilenameHint | None = None
     error: str | None = None  # why the photo could not be read
+    ocr_unavailable: bool = False  # no QR and Tesseract missing or failing, so the number was not tried
+    # The file carries an EXIF orientation tag (Windows Explorer rotates JPEGs that way), so moving it as
+    # is would rely on the viewer honouring the tag: it must be rewritten from `upright`.
+    exif_oriented: bool = False
 
 
-def _open(path: Path) -> np.ndarray | None:
+def _open(path: Path, flags: int = _RAW_PIXELS) -> np.ndarray | None:
     # np.fromfile + imdecode: cv2.imread fails on Windows paths with accents.
     data = np.fromfile(str(path), dtype=np.uint8)
     if data.size == 0:  # imdecode raises on an empty buffer (a failed copy leaves 0-byte files)
         return None
-    return cv2.imdecode(data, cv2.IMREAD_COLOR)
+    return cv2.imdecode(data, flags)
+
+
+def _has_exif_orientation(path: Path) -> bool:
+    # The tag is only a hint: any failure reading it (Pillow raises SyntaxError, struct.error and others on
+    # a corrupt EXIF block) counts as no tag, so it never costs a photo whose QR was read.
+    try:
+        with Image.open(path) as image:
+            return image.getexif().get(_EXIF_ORIENTATION, 1) != 1
+    except Exception as error:
+        logger.warning("Could not read the EXIF of %s: %s", path.name, error)
+        return False
 
 
 def _from_qr(result: CanhotoResult, img: np.ndarray, read: QrRead) -> None:
@@ -57,11 +78,13 @@ def _from_qr(result: CanhotoResult, img: np.ndarray, read: QrRead) -> None:
 
 
 def _from_ocr(result: CanhotoResult, img: np.ndarray) -> None:
-    result.upright = img
+    # Without a QR the EXIF tag is the only hint of the right position, so apply it.
+    result.upright = _open(result.path, cv2.IMREAD_COLOR) if result.exif_oriented else img
     try:
         number = ocr.process_image(str(result.path))
     except (pytesseract.TesseractNotFoundError, pytesseract.TesseractError) as error:
         logger.warning("OCR unavailable for %s: %s", result.path.name, error)
+        result.ocr_unavailable = True
         return
     if number:
         result.nfe, result.nfe_source = int(number), "ocr"
@@ -81,6 +104,7 @@ def process(path: str | Path) -> CanhotoResult:
         result.error = "O arquivo não é uma imagem."
         return result
     try:
+        result.exif_oriented = _has_exif_orientation(result.path)
         read = read_key(img)
         if read:
             _from_qr(result, img, read)

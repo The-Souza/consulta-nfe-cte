@@ -36,19 +36,35 @@ def expected() -> dict[Path, int]:
         return {PHOTOS / row["arquivo"]: int(row["nfe"]) for row in csv.DictReader(file)}
 
 
+def as_displayed(path: Path) -> np.ndarray:
+    """The photo as a viewer shows it: IMREAD_COLOR applies the EXIF orientation tag."""
+    return cv2.imdecode(np.fromfile(str(path), np.uint8), cv2.IMREAD_COLOR)
+
+
 def turned_copies(expected: dict[Path, int], degrees: int, folder: Path) -> dict[Path, int]:
+    """Copies turned `degrees` clockwise from how they are displayed, without any EXIF tag."""
     copies = {}
     for path, nfe in expected.items():
-        img = cv2.imdecode(np.fromfile(str(path), np.uint8), cv2.IMREAD_COLOR)
+        img = as_displayed(path)
+        if degrees:
+            img = cv2.rotate(img, TURNS[degrees])
         target = folder / path.name
-        cv2.imencode(".jpg", cv2.rotate(img, TURNS[degrees]), [cv2.IMWRITE_JPEG_QUALITY, 95])[1].tofile(str(target))
+        cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 95])[1].tofile(str(target))
         copies[target] = nfe
     return copies
 
 
+def test_originals_come_out_as_displayed(expected):
+    """The local photos were turned in Windows Explorer, which only sets the EXIF tag."""
+    for result in map(process, expected):
+        if result.nfe_source == "qr":
+            assert result.upright.shape == as_displayed(result.path).shape
+            assert result.nfe == expected[result.path]
+
+
 @pytest.mark.parametrize("degrees", [0, 90, 180, 270])
 def test_qr_reads_most_photos_without_errors_in_any_turn(expected, degrees, tmp_path):
-    photos = expected if degrees == 0 else turned_copies(expected, degrees, tmp_path)
+    photos = turned_copies(expected, degrees, tmp_path)
     results = [process(path) for path in photos]
     by_qr = [(r, photos[r.path]) for r in results if r.nfe_source == "qr"]
     assert len(by_qr) >= MIN_QR_SHARE * len(photos)
