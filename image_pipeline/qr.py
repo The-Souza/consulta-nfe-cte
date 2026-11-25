@@ -5,9 +5,9 @@ test photos, the whole photo reads 10, upscaling adds 3 and the binarized half c
 """
 
 import math
+import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from functools import cache
 
 import cv2
 import numpy as np
@@ -49,9 +49,16 @@ class _Variant:
         return mapped
 
 
-@cache
+_per_thread = threading.local()
+
+
 def _detectors() -> list:
-    return [cv2.QRCodeDetector(), cv2.QRCodeDetectorAruco()]
+    """One pair per thread: OpenCV does not document the detectors as thread-safe, and the review screen reads
+    QR codes from two workers at once."""
+    detectors = getattr(_per_thread, "detectors", None)
+    if detectors is None:
+        detectors = _per_thread.detectors = [cv2.QRCodeDetector(), cv2.QRCodeDetectorAruco()]
+    return detectors
 
 
 def _upscale(gray: np.ndarray) -> np.ndarray:

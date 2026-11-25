@@ -10,6 +10,7 @@ import pytest
 import image_pipeline
 from image_pipeline import pipeline
 from image_pipeline.pipeline import CanhotoResult, process, process_batch
+from image_pipeline.quality import comparable_sharpness
 from image_pipeline.strip import STRIP_H, STRIP_W
 from tests.image_pipeline.fakes import make_key, make_photo, make_stub, save_jpeg
 
@@ -156,6 +157,19 @@ class TestOcrFallback:
         assert result.sharpness > 0
         assert result.error is None
 
+    def test_without_ocr_a_photo_without_qr_is_not_read(self, tmp_path, ocr_reads):
+        calls = ocr_reads("4406833")
+        result = process(save(tmp_path / "foto.jpg", make_photo(make_stub())), use_ocr=False)
+        assert calls == []
+        assert (result.nfe, result.nfe_source, result.ocr_unavailable, result.error) == (None, None, False, None)
+        assert result.upright is not None
+
+    def test_without_ocr_a_qr_photo_is_read_as_usual(self, tmp_path, ocr_reads):
+        ocr_reads()
+        result = process(save(tmp_path / "foto.jpg", make_photo(make_stub(KEY))), use_ocr=False)
+        assert (result.nfe, result.nfe_source) == (NFE, "qr")
+        assert result.strip is not None
+
     def test_nothing_read_leaves_the_invoice_empty(self, tmp_path, ocr_reads):
         ocr_reads(None)
         result = process(save(tmp_path / "foto.jpg", make_photo(make_stub())))
@@ -209,6 +223,14 @@ class TestBrokenFiles:
         result = process(save(tmp_path / "foto.jpg", make_photo(make_stub(KEY))))
         assert result.error and result.nfe is None
         assert "boom" in caplog.text
+
+
+@pytest.mark.parametrize("key", [KEY, None], ids=["with-qr", "without-qr"])
+def test_sharpness_is_measured_the_same_way_with_or_without_qr(tmp_path, ocr_reads, key):
+    """#38: a photo read by QR and its duplicate read by OCR must be comparable."""
+    ocr_reads()
+    result = process(save(tmp_path / "foto.jpg", make_photo(make_stub(key))))
+    assert result.sharpness == comparable_sharpness(result.upright)
 
 
 def test_reads_the_hint_from_the_file_name(tmp_path, ocr_reads):
