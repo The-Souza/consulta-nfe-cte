@@ -131,6 +131,12 @@ class TestNotRenamed:
         assert run.statuses == [("a.jpg", None, status)]
         assert (tmp_path / "a.jpg").read_bytes() == original
 
+    def test_the_reason_of_an_error_is_logged(self, tmp_path, results, caplog):
+        write_photo(tmp_path / "a.jpg")
+        results["a.jpg"] = PermissionError("locked by another program")
+        Run(tmp_path)
+        assert "a.jpg" in caplog.text and "locked by another program" in caplog.text
+
     def test_an_existing_destination_is_a_duplicate(self, tmp_path, results):
         (tmp_path / "renomeadas").mkdir()
         (tmp_path / "renomeadas" / "4406833.jpg").write_bytes(b"first")

@@ -10,7 +10,7 @@ from typing import Literal
 import cv2
 import numpy as np
 import pytesseract
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
 import ocr
 from image_pipeline.access_key import nfe_from_key
@@ -58,10 +58,13 @@ def _open(path: Path, flags: int = _RAW_PIXELS) -> np.ndarray | None:
 
 
 def _has_exif_orientation(path: Path) -> bool:
+    # The tag is only a hint: any failure reading it (Pillow raises SyntaxError, struct.error and others on
+    # a corrupt EXIF block) counts as no tag, so it never costs a photo whose QR was read.
     try:
         with Image.open(path) as image:
             return image.getexif().get(_EXIF_ORIENTATION, 1) != 1
-    except (OSError, UnidentifiedImageError, ValueError):
+    except Exception as error:
+        logger.warning("Could not read the EXIF of %s: %s", path.name, error)
         return False
 
 

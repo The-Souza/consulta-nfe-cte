@@ -1,3 +1,4 @@
+import struct
 import threading
 from pathlib import Path
 
@@ -115,6 +116,24 @@ class TestExifOrientation:
         ocr_reads()
         result = process(save_jpeg(tmp_path / "foto.jpg", make_photo(make_stub(KEY)), orientation))
         assert not result.exif_oriented
+
+    @pytest.mark.parametrize("error", [SyntaxError("not a TIFF file"), struct.error("unpack requires a buffer")])
+    def test_a_corrupt_exif_block_is_ignored(self, tmp_path, ocr_reads, monkeypatch, error):
+        ocr_reads()
+
+        class CorruptExif:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def getexif(self):
+                raise error
+
+        monkeypatch.setattr(pipeline.Image, "open", lambda _path: CorruptExif())
+        result = process(save_jpeg(tmp_path / "foto.jpg", make_photo(make_stub(KEY))))
+        assert (result.nfe, result.error, result.exif_oriented) == (NFE, None, False)
 
     def test_a_png_is_not_flagged(self, tmp_path, ocr_reads):
         ocr_reads()

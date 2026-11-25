@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import time
@@ -8,6 +9,8 @@ import cv2
 import numpy as np
 
 import image_pipeline
+
+logger = logging.getLogger(__name__)
 
 _IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png")
 _JPEG_QUALITY = 95
@@ -87,6 +90,7 @@ class RenameWorker:
             try:
                 invoice_num, status = self._rename(Path(folder) / filename, output, originals)
             except Exception:
+                logger.exception("Could not rename %s", filename)
                 status = "erro"
 
             prog    = (i + 1) / total
