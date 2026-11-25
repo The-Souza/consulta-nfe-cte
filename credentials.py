@@ -1,33 +1,26 @@
-import json
 import logging
-import sys
-import keyring
-from pathlib import Path
 
+import keyring
+
+import local_config
 from config import APP_NAME
 
 logger = logging.getLogger(__name__)
 
-_base            = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
-_CONFIG          = _base / "config.json"
+_CONFIG          = local_config.CONFIG_FILE
 _KEYRING_SERVICE = APP_NAME
 
 
 def save(email: str, password: str) -> None:
     # Only the email changes: config.json may hold other settings
-    data = _read_config()
+    data = local_config.read(_CONFIG)
     data["email"] = email
-    _CONFIG.write_text(json.dumps(data), encoding="utf-8")
+    local_config.write(data, _CONFIG)
     keyring.set_password(_KEYRING_SERVICE, email, password)
 
 
 def load() -> tuple[str, str]:
-    email, password = "", ""
-    if _CONFIG.exists():
-        try:
-            email = json.loads(_CONFIG.read_text(encoding="utf-8")).get("email", "")
-        except Exception:
-            pass
+    email, password = local_config.read(_CONFIG).get("email", ""), ""
     if email:
         try:
             password = keyring.get_password(_KEYRING_SERVICE, email) or ""
@@ -42,23 +35,11 @@ def remember_by_default(email: str, password: str) -> bool:
     return bool(password) or not email
 
 
-def _read_config() -> dict:
-    """config.json as a dict; missing, unreadable or non-object content counts as empty."""
-    if not _CONFIG.exists():
-        return {}
-    try:
-        data = json.loads(_CONFIG.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        logger.warning("Could not read %s", _CONFIG, exc_info=True)
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
 def forget_password(email: str) -> None:
     """Keep `email` for the next login but remove the stored passwords (of `email` and of the
     previously saved email). Never raises: failures are only logged, because this runs right after
     a successful login."""
-    data = _read_config()
+    data = local_config.read(_CONFIG)
     saved_email = data.get("email", "")
 
     for address in {saved_email, email} - {""}:
@@ -72,6 +53,6 @@ def forget_password(email: str) -> None:
 
     data["email"] = email
     try:
-        _CONFIG.write_text(json.dumps(data), encoding="utf-8")
+        local_config.write(data, _CONFIG)
     except OSError:
         logger.warning("Could not update %s", _CONFIG, exc_info=True)
