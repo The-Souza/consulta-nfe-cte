@@ -85,6 +85,25 @@ class TestMask:
     def test_keeps_slashes_the_user_typed(self):
         assert mask("4/1/2026") == "4/1/2026"
 
+    @staticmethod
+    def type_keys(keys: str) -> str:
+        """The field after each keystroke goes through the mask, as the screen does."""
+        text = ""
+        for key in keys:
+            text = mask(text + key)
+        return text
+
+    @pytest.mark.parametrize(
+        "keys, shown",
+        [("14112026", "14/11/2026"), ("141126", "14/11/26"), ("1411", "14/11"), ("14/11/2026", "14/11/2026"),
+         ("4/1/2026", "4/1/2026"), ("14/1/2026", "14/1/2026")],
+    )
+    def test_typing_key_by_key(self, keys, shown):
+        assert self.type_keys(keys) == shown
+
+    def test_a_full_date_typed_key_by_key_is_read(self):
+        assert parse_date(self.type_keys("14112026"), TODAY) == date(2026, 11, 14)
+
     def test_drops_letters_and_limits_the_length(self):
         assert mask("14a11") == "14/11"
         assert mask("14/11/20261") == "14/11/2026"

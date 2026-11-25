@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 import pytest
 
-from conference.batch import Batch, Chip, MissingField
+from conference.batch import Batch, Chip, DuplicateUnresolved, MissingField
 from conference.photo import Photo, Status, SystemInfo
 
 D13, D14, D15 = date(2026, 11, 13), date(2026, 11, 14), date(2026, 11, 15)
@@ -116,6 +116,21 @@ class TestConfirm:
         with pytest.raises(MissingField) as error:
             b.confirm("a.jpg")
         assert error.value.field == field and not b.photo("a.jpg").confirmed
+
+    def test_a_duplicate_cannot_be_confirmed_until_resolved(self):
+        b = batch(p("a.jpg", 1, D14), p("b.jpg", 1, D14))
+        with pytest.raises(DuplicateUnresolved):
+            b.confirm("a.jpg")
+        b.discard("b.jpg")
+        assert b.status("a.jpg") is Status.TO_CHECK
+        b.confirm("a.jpg")
+        assert b.status("a.jpg") is Status.READY
+
+    def test_a_confirmation_given_before_the_duplicate_appeared_is_kept(self):
+        b = batch(p("a.jpg", 1, D14, confirmed=True))
+        b.add(p("b.jpg", 1, D14))
+        b.discard("b.jpg")
+        assert b.status("a.jpg") is Status.READY
 
     def test_confirm_many_skips_duplicates(self):
         b = batch(p("a.jpg", 1, D14), p("b.jpg", 1, D14), p("c.jpg", 2, D14))

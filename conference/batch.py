@@ -40,6 +40,10 @@ class MissingField(Exception):
         self.field = field
 
 
+class DuplicateUnresolved(Exception):
+    """A duplicate is resolved first ("Comparar as duas"), so it is clear which photo belongs to the invoice."""
+
+
 @dataclass(frozen=True)
 class Summary:
     ready: int
@@ -115,6 +119,8 @@ class Batch:
         photo = self._photos[name]
         if photo.nfe is None:
             raise MissingField("nfe")
+        if name in self._duplicated_names():
+            raise DuplicateUnresolved(name)
         if photo.date is None:
             raise MissingField("date")
         photo.confirmed = True

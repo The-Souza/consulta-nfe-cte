@@ -63,10 +63,16 @@ def parse_date(text: str, today: date) -> date | None:
 
 
 def mask(text: str) -> str:
-    """Adds the slashes while digits are typed (`1411` → `14/11`). Slashes typed by hand are kept."""
-    if "/" in text:
-        return re.sub(r"[^\d/]", "", text)[:_MAX_LENGTH]
-    digits = re.sub(r"\D", "", text)[:_MAX_DIGITS]
+    """Adds the slashes while digits are typed (`1411` → `14/11`), on every keystroke.
+
+    Slashes are rebuilt from the digits while the day and the month have two digits each, which covers the
+    slashes the mask itself added. A one-digit day or month (`4/1/2026`) means they were typed by hand, so
+    they are kept as they are.
+    """
+    text = re.sub(r"[^\d/]", "", text)
+    if any(len(part) != 2 for part in text.split("/")[:-1]):
+        return text[:_MAX_LENGTH]
+    digits = text.replace("/", "")[:_MAX_DIGITS]
     return "/".join(part for part in (digits[:2], digits[2:4], digits[4:]) if part)
 
 
