@@ -88,6 +88,14 @@ class TestRenamed:
         assert (tmp_path / "renomeadas" / "originais" / "a.jpg").read_bytes() == original
         assert not (tmp_path / "a.jpg").exists()
 
+    def test_an_exif_tagged_photo_is_rewritten_even_without_rotation(self, tmp_path, results):
+        original = write_photo(tmp_path / "a.jpg")
+        results["a.jpg"] = read(nfe=4406833, rotation=0, exif_oriented=True)
+        run = Run(tmp_path)
+        assert run.statuses == [("a.jpg", "4406833", "ok")]
+        assert decode(tmp_path / "renomeadas" / "4406833.jpg").shape == PHOTO.shape
+        assert (tmp_path / "renomeadas" / "originais" / "a.jpg").read_bytes() == original
+
     def test_a_turned_photo_leaves_no_temporary_file(self, tmp_path, results):
         write_photo(tmp_path / "a.jpg")
         results["a.jpg"] = read(nfe=4406833, rotation=90)

@@ -10,7 +10,7 @@ import image_pipeline
 from image_pipeline import pipeline
 from image_pipeline.pipeline import CanhotoResult, process, process_batch
 from image_pipeline.strip import STRIP_H, STRIP_W
-from tests.image_pipeline.fakes import make_key, make_photo, make_stub
+from tests.image_pipeline.fakes import make_key, make_photo, make_stub, save_jpeg
 
 NFE = 4406833
 KEY = make_key(nfe=NFE)
@@ -75,6 +75,52 @@ class TestQrPhoto:
         path = save(tmp_path / "foto.jpg", make_photo(make_stub(KEY)))
         result = process(str(path))
         assert result.path == path and result.nfe == NFE
+
+
+class TestExifOrientation:
+    """Windows Explorer rotates a JPEG by adding an EXIF orientation tag and leaving the pixels as they
+    are. The rotation must come from the pixels, so the saved photo is upright in any viewer."""
+
+    # EXIF 6 means "turn 90° clockwise to display": the pixels are the photo turned 90° counterclockwise.
+    def stored_sideways(self, display: np.ndarray) -> np.ndarray:
+        return cv2.rotate(display, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+    def test_rotation_comes_from_the_pixels_not_the_tag(self, tmp_path, ocr_reads):
+        ocr_reads()
+        display = make_photo(make_stub(KEY))
+        result = process(save_jpeg(tmp_path / "foto.jpg", self.stored_sideways(display), orientation=6))
+        assert result.nfe == NFE
+        assert result.rotation == 270
+        assert result.upright.shape == display.shape
+        assert result.exif_oriented
+
+    def test_a_tag_on_upright_pixels_is_flagged(self, tmp_path, ocr_reads):
+        ocr_reads()
+        display = make_photo(make_stub(KEY))
+        result = process(save_jpeg(tmp_path / "foto.jpg", display, orientation=6))
+        assert result.rotation == 0
+        assert result.upright.shape == display.shape
+        assert result.exif_oriented
+
+    def test_without_a_qr_the_tag_decides_the_position(self, tmp_path, ocr_reads):
+        ocr_reads()
+        display = make_photo(make_stub())
+        result = process(save_jpeg(tmp_path / "foto.jpg", self.stored_sideways(display), orientation=6))
+        assert result.rotation == 0
+        assert result.upright.shape == display.shape
+        assert result.exif_oriented
+
+    @pytest.mark.parametrize("orientation", [None, 1])
+    def test_no_tag_or_the_normal_tag_is_not_flagged(self, tmp_path, ocr_reads, orientation):
+        ocr_reads()
+        result = process(save_jpeg(tmp_path / "foto.jpg", make_photo(make_stub(KEY)), orientation))
+        assert not result.exif_oriented
+
+    def test_a_png_is_not_flagged(self, tmp_path, ocr_reads):
+        ocr_reads()
+        path = tmp_path / "foto.png"
+        cv2.imencode(".png", make_photo(make_stub(KEY)))[1].tofile(str(path))
+        assert not process(path).exif_oriented
 
 
 class TestOcrFallback:

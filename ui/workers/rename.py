@@ -107,7 +107,7 @@ class RenameWorker:
         target = output / f"{invoice_num}.jpg"
         if target.exists():
             return invoice_num, "duplicata"
-        if result.rotation == 0:
+        if result.rotation == 0 and not result.exif_oriented:
             shutil.move(str(path), str(target))
         else:
             _save_upright(result, target, originals)
