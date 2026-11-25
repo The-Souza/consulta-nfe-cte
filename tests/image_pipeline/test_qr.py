@@ -1,3 +1,5 @@
+import threading
+
 import cv2
 import numpy as np
 import pytest
@@ -139,3 +141,30 @@ class TestLadder:
         monkeypatch.setattr(qr, "_detectors", lambda: [detector])
         assert read_key(np.zeros((100, 200), np.uint8)) is None
         assert len(detector.calls) > 1
+
+
+class TestDetectorsPerThread:
+    """OpenCV detectors are not documented as thread-safe, and the review screen reads QR codes from two
+    workers at once: each thread gets its own pair."""
+
+    def test_the_same_thread_reuses_its_detectors(self):
+        assert qr._detectors() is qr._detectors()
+
+    def test_another_thread_gets_its_own_detectors(self):
+        seen = []
+        worker = threading.Thread(target=lambda: seen.append(qr._detectors()))
+        worker.start()
+        worker.join()
+        mine = qr._detectors()
+        assert seen[0] is not mine
+        assert all(theirs is not ours for theirs, ours in zip(seen[0], mine))
+
+    def test_reading_in_two_threads_at_once_gives_the_right_key(self):
+        photo = make_photo(make_stub(KEY))
+        keys = []
+        workers = [threading.Thread(target=lambda: keys.append(read_key(photo).key)) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join()
+        assert keys == [KEY, KEY]

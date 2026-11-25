@@ -40,6 +40,9 @@ _LABELS = (DATA, RECEBIMENTO, IDENTIFICACAO)
 class DateArea:
     image: np.ndarray
     anchored: bool  # False when no label was read and image is the whole receipt area
+    # Columns of the date box in the receipt area, kept in the review progress so the slow label search
+    # does not run again when the photo is reopened; None when not anchored.
+    bounds: tuple[int, int] | None = None
 
 
 def _normalize(word: str) -> str:
@@ -102,4 +105,4 @@ def date_area(area: np.ndarray) -> DateArea:
     start, end = _bounds(found, area.shape[1])
     if end - start < MIN_WIDTH:
         return DateArea(area, anchored=False)
-    return DateArea(area[:, start:end], anchored=True)
+    return DateArea(area[:, start:end], anchored=True, bounds=(start, end))

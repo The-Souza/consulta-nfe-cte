@@ -42,6 +42,7 @@ def tesseract(monkeypatch):
 def assert_crop(result, start: int, end: int):
     area = make_area()
     assert result.anchored
+    assert result.bounds == (start, end)  # saved in the progress, so the crop is not searched again
     assert result.image.shape == (AREA_H, end - start, 3)
     assert np.array_equal(result.image, area[:, start:end])
 
@@ -109,6 +110,7 @@ class TestFallback:
         tesseract({"RECEBEMOS": 100, "PRODUTOS": 300})
         result = date_area(make_area())
         assert not result.anchored
+        assert result.bounds is None
         assert np.array_equal(result.image, make_area())
 
     @pytest.mark.parametrize(

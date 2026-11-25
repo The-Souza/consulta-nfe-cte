@@ -16,7 +16,7 @@ import ocr
 from image_pipeline.access_key import nfe_from_key
 from image_pipeline.filename_hint import FilenameHint, hint_from_filename
 from image_pipeline.qr import QrRead, read_key
-from image_pipeline.quality import sharpness
+from image_pipeline.quality import comparable_sharpness
 from image_pipeline.strip import receipt_area, straighten, upright
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class CanhotoResult:
     upright: np.ndarray | None = None  # the whole photo in the right position; None if it did not open
     strip: np.ndarray | None = None  # straightened from the QR; None without QR
     receipt_area: np.ndarray | None = None  # date and signature; None without QR
-    sharpness: float = 0.0  # of the strip, or of the upright photo without QR
+    sharpness: float = 0.0  # of the upright photo at a fixed width, comparable with or without QR
     hint: FilenameHint | None = None
     error: str | None = None  # why the photo could not be read
     ocr_unavailable: bool = False  # no QR and Tesseract missing or failing, so the number was not tried
@@ -77,9 +77,12 @@ def _from_qr(result: CanhotoResult, img: np.ndarray, read: QrRead) -> None:
         result.strip, result.receipt_area = stub.image, receipt_area(stub)
 
 
-def _from_ocr(result: CanhotoResult, img: np.ndarray) -> None:
+def _upright_without_qr(result: CanhotoResult, img: np.ndarray) -> None:
     # Without a QR the EXIF tag is the only hint of the right position, so apply it.
     result.upright = _open(result.path, cv2.IMREAD_COLOR) if result.exif_oriented else img
+
+
+def _from_ocr(result: CanhotoResult) -> None:
     try:
         number = ocr.process_image(str(result.path))
     except (pytesseract.TesseractNotFoundError, pytesseract.TesseractError) as error:
@@ -90,8 +93,12 @@ def _from_ocr(result: CanhotoResult, img: np.ndarray) -> None:
         result.nfe, result.nfe_source = int(number), "ocr"
 
 
-def process(path: str | Path) -> CanhotoResult:
-    """Reads one photo. Never raises: a photo that cannot be read comes back with `error` set."""
+def process(path: str | Path, use_ocr: bool = True) -> CanhotoResult:
+    """Reads one photo. Never raises: a photo that cannot be read comes back with `error` set.
+
+    With `use_ocr=False` a photo without a readable QR is not read by OCR (the slow step): used to rebuild
+    the crops of a photo whose invoice number is already known.
+    """
     result = CanhotoResult(Path(path))
     result.hint = hint_from_filename(str(result.path))
     try:
@@ -109,8 +116,10 @@ def process(path: str | Path) -> CanhotoResult:
         if read:
             _from_qr(result, img, read)
         else:
-            _from_ocr(result, img)
-        result.sharpness = sharpness(result.strip if result.strip is not None else result.upright)
+            _upright_without_qr(result, img)
+            if use_ocr:
+                _from_ocr(result)
+        result.sharpness = comparable_sharpness(result.upright)
     except Exception:
         logger.exception("Unexpected failure reading %s", result.path.name)
         return CanhotoResult(result.path, hint=result.hint, error="Erro inesperado ao ler a foto.")
