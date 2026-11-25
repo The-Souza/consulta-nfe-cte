@@ -1,7 +1,11 @@
 """Delivery dates typed during the review: DD/MM/AAAA, with shorter forms for speed."""
 
 import re
-from datetime import date
+from datetime import date, timedelta
+
+# Stubs are sent every week, so a pending one is at most a month or two old. Six months leaves plenty of
+# room and still catches a mistyped year ("14/12/25" for 2026), which would reach the portal for good.
+MAX_AGE = timedelta(days=183)
 
 _SLASHED = re.compile(r"(\d{1,2})/(\d{1,2})(?:/(\d{2}|\d{4}))?")
 _DIGITS = re.compile(r"\d{4}|\d{6}|\d{8}")
@@ -29,23 +33,33 @@ def _build(year: int, month: int, day: int) -> date:
         raise DateError("Data inválida") from None
 
 
+def _check_range(value: date, today: date) -> date:
+    if value > today:
+        raise DateError("Data no futuro")
+    if today - value > MAX_AGE:
+        raise DateError("Data muito antiga")
+    return value
+
+
 def parse_date(text: str, today: date) -> date | None:
     """The date in `text`, or None when it is empty.
 
     Without a year, the current one is used; if that gives a date after `today` (in January, typing
-    20/12), the year before. A delivery cannot happen after today, so a future date with a year is refused.
+    20/12), the year before. A delivery cannot happen after today, nor more than six months before it.
     """
     text = text.strip()
     if not text:
         return None
     day, month, year = _parts(text)
     if year is None:
-        result = _build(today.year, month, day)
-        return result if result <= today else _build(today.year - 1, month, day)
-    result = _build(2000 + int(year) if len(year) == 2 else int(year), month, day)
-    if result > today:
-        raise DateError("Data no futuro")
-    return result
+        this_year = _build(today.year, month, day)
+        if this_year <= today:
+            return _check_range(this_year, today)
+        last_year = _build(today.year - 1, month, day)
+        if today - last_year > MAX_AGE:
+            raise DateError("Data no futuro")  # most likely a future date typed by mistake
+        return last_year
+    return _check_range(_build(2000 + int(year) if len(year) == 2 else int(year), month, day), today)
 
 
 def mask(text: str) -> str:

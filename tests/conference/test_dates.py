@@ -12,7 +12,7 @@ class TestParse:
         "text, expected",
         [
             ("14/11/2026", date(2026, 11, 14)),
-            ("4/1/2026", date(2026, 1, 4)),
+            ("4/10/2026", date(2026, 10, 4)),
             ("14/11/26", date(2026, 11, 14)),
             ("14/11", date(2026, 11, 14)),
             ("25/11", TODAY),
@@ -35,7 +35,19 @@ class TestParse:
 
     def test_without_year_a_future_date_falls_back_to_last_year(self):
         assert parse_date("20/12", date(2027, 1, 5)) == date(2026, 12, 20)
-        assert parse_date("26/11", TODAY) == date(2025, 11, 26)
+
+    def test_without_year_a_date_that_is_future_now_and_too_old_last_year_is_future(self):
+        with pytest.raises(DateError, match="Data no futuro"):
+            parse_date("26/11", TODAY)
+
+    @pytest.mark.parametrize("text", ["14/11/2016", "14/11/16", "14/12/25", "24/05/2026"])
+    def test_rejects_a_date_older_than_six_months(self, text):
+        with pytest.raises(DateError, match="Data muito antiga"):
+            parse_date(text, TODAY)
+
+    def test_accepts_a_date_up_to_six_months_old(self):
+        assert parse_date("26/05/2026", TODAY) == date(2026, 5, 26)
+        assert parse_date("01/10", TODAY) == date(2026, 10, 1)
 
     @pytest.mark.parametrize("text", ["31/02/2026", "30/13/2026", "00/11/2026", "31/04", "29/02/2026"])
     def test_rejects_a_date_that_does_not_exist(self, text):

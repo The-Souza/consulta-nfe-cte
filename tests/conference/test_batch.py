@@ -54,11 +54,11 @@ class TestDuplicates:
 class TestChips:
     def make(self) -> Batch:
         return batch(
-            p("1.jpg"),                                  # não lida
-            p("2.jpg", 1), p("3.jpg", 1),                # duplicatas
-            p("4.jpg", 2),                               # sem data
-            p("5.jpg", 3, D14),                          # a conferir
-            p("6.jpg", 4, D14, confirmed=True),          # pronta
+            p("1.jpg"),                                  # unread
+            p("2.jpg", 1), p("3.jpg", 1),                # duplicates
+            p("4.jpg", 2),                               # no date
+            p("5.jpg", 3, D14),                          # to check
+            p("6.jpg", 4, D14, confirmed=True),          # ready
             p("7.jpg", 5, D14, confirmed=True, discarded=True),
         )
 
@@ -117,6 +117,11 @@ class TestConfirm:
             b.confirm("a.jpg")
         assert error.value.field == field and not b.photo("a.jpg").confirmed
 
+    def test_confirm_many_skips_duplicates(self):
+        b = batch(p("a.jpg", 1, D14), p("b.jpg", 1, D14), p("c.jpg", 2, D14))
+        assert b.confirm_many(["a.jpg", "b.jpg", "c.jpg"]) == 1
+        assert [b.photo(n).confirmed for n in ("a.jpg", "b.jpg", "c.jpg")] == [False, False, True]
+
     def test_confirm_many_confirms_only_the_complete_ones(self):
         b = batch(p("a.jpg", 1, D14), p("b.jpg", 2), p("c.jpg", None, D14), p("d.jpg", 4, system_date=D13))
         assert b.confirm_many(["a.jpg", "b.jpg", "c.jpg", "d.jpg"]) == 2
@@ -133,6 +138,16 @@ class TestNextPending:
 
     def test_wraps_around(self):
         assert self.make().next_pending("d.jpg") == "a.jpg"
+
+    def test_after_discarding_the_current_photo_it_goes_on_from_there(self):
+        b = batch(p("a.jpg", 1), p("b.jpg", 2), p("c.jpg", 3), p("d.jpg", 4))
+        b.discard("c.jpg")
+        assert b.next_pending("c.jpg") == "d.jpg"
+
+    def test_after_keeping_a_duplicate_it_goes_on_from_the_discarded_one(self):
+        b = batch(p("a.jpg", 9), p("b.jpg", 1), p("c.jpg", 1), p("d.jpg", 4))
+        b.keep("b.jpg", "c.jpg")
+        assert b.next_pending("c.jpg") == "d.jpg"
 
     def test_from_no_selection_starts_at_the_top(self):
         assert self.make().next_pending(None) == "a.jpg"
@@ -152,6 +167,11 @@ class TestResolveDuplicates:
         b = batch(p("a.jpg", 1), p("b.jpg", 1, D14))
         b.keep("a.jpg", "b.jpg")
         assert b.photo("b.jpg").discarded and b.photo("a.jpg").date == D14
+        assert b.status("a.jpg") is Status.TO_CHECK
+
+    def test_the_kept_photo_must_be_confirmed_again(self):
+        b = batch(p("a.jpg", 1, D14, confirmed=True), p("b.jpg", 1, D14, confirmed=True))
+        b.keep("a.jpg", "b.jpg")
         assert b.status("a.jpg") is Status.TO_CHECK
 
     def test_keep_does_not_overwrite_a_date_already_set(self):

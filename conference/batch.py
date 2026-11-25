@@ -120,22 +120,27 @@ class Batch:
         photo.confirmed = True
 
     def confirm_many(self, names: Iterable[str]) -> int:
-        """Confirms the photos that have an invoice number and a date. Returns how many."""
+        """Confirms the photos that have an invoice number and a date and are not duplicates: which photo of
+        a duplicate stays is decided when comparing them. Returns how many."""
+        statuses = self._statuses()
         confirmed = 0
         for name in names:
-            photo = self._photos[name]
-            if not photo.discarded and photo.nfe is not None and photo.date is not None:
-                photo.confirmed = True
+            if statuses.get(name) in (Status.TO_CHECK, Status.READY):
+                self._photos[name].confirmed = True
                 confirmed += 1
         return confirmed
 
     def next_pending(self, after: str | None) -> str | None:
-        """The next photo that is not ready, after `after` and wrapping around; `after` itself comes last."""
+        """The next photo that is not ready, after `after` and wrapping around; `after` itself comes last.
+
+        `after` may already be discarded (the user discarded the current photo): its place in the name order
+        still counts, so the review goes on from there and not from the top.
+        """
         statuses = self._statuses()
-        names = list(statuses)
-        start = names.index(after) + 1 if after in statuses else 0
+        names = list(self._photos)
+        start = names.index(after) + 1 if after in self._photos else 0
         for name in names[start:] + names[:start]:
-            if statuses[name] is not Status.READY:
+            if name in statuses and statuses[name] is not Status.READY:
                 return name
         return None
 
@@ -143,11 +148,16 @@ class Batch:
         self._photos[name].discarded = True
 
     def keep(self, name: str, other: str) -> None:
-        """Keeps `name` and discards `other`, its duplicate. A typed date of the discarded one moves over."""
+        """Keeps `name` and discards `other`, its duplicate. A typed date of the discarded one moves over.
+
+        The kept photo goes back to "to check": a confirmation given while it was a duplicate did not decide
+        which photo belongs to the invoice.
+        """
         kept, dropped = self._photos[name], self._photos[other]
         dropped.discarded = True
         if kept.date is None and dropped.typed_date is not None:
             kept.set_typed_date(dropped.typed_date)
+        kept.confirmed = False
 
     def wrong_number(self, name: str) -> None:
         self._photos[name].set_nfe(None)
