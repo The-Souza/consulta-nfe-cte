@@ -127,11 +127,11 @@ class Batch:
 
     def confirm_many(self, names: Iterable[str]) -> int:
         """Confirms the photos that have an invoice number and a date and are not duplicates: which photo of
-        a duplicate stays is decided when comparing them. Returns how many."""
+        a duplicate stays is decided when comparing them. Returns how many changed (ready ones do not count)."""
         statuses = self._statuses()
         confirmed = 0
         for name in names:
-            if statuses.get(name) in (Status.TO_CHECK, Status.READY):
+            if statuses.get(name) is Status.TO_CHECK:
                 self._photos[name].confirmed = True
                 confirmed += 1
         return confirmed
@@ -154,13 +154,17 @@ class Batch:
         self._photos[name].discarded = True
 
     def keep(self, name: str, other: str) -> None:
-        """Keeps `name` and discards `other`, its duplicate. A typed date of the discarded one moves over.
+        """Keeps `name` and discards `other`, its duplicate.
 
-        The kept photo goes back to "to check": a confirmation given while it was a duplicate did not decide
-        which photo belongs to the invoice.
+        Both share the invoice number, so the portal lookup of the discarded one moves over when the kept one
+        has none yet, and so does its typed date when the kept one still has no date. The kept photo goes
+        back to "to check": a confirmation given while it was a duplicate did not decide which photo belongs
+        to the invoice.
         """
         kept, dropped = self._photos[name], self._photos[other]
         dropped.discarded = True
+        if kept.system is None and dropped.system is not None:
+            kept.system = dropped.system
         if kept.date is None and dropped.typed_date is not None:
             kept.set_typed_date(dropped.typed_date)
         kept.confirmed = False

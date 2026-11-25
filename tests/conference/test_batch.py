@@ -137,6 +137,11 @@ class TestConfirm:
         assert b.confirm_many(["a.jpg", "b.jpg", "c.jpg"]) == 1
         assert [b.photo(n).confirmed for n in ("a.jpg", "b.jpg", "c.jpg")] == [False, False, True]
 
+    def test_confirm_many_counts_only_the_photos_it_changed(self):
+        ready = [p(f"r{i}.jpg", 10 + i, D14, confirmed=True) for i in range(8)]
+        b = batch(*ready, p("a.jpg", 1, D14), p("b.jpg", 2, D14))
+        assert b.confirm_many([x.name for x in b.visible()]) == 2
+
     def test_confirm_many_confirms_only_the_complete_ones(self):
         b = batch(p("a.jpg", 1, D14), p("b.jpg", 2), p("c.jpg", None, D14), p("d.jpg", 4, system_date=D13))
         assert b.confirm_many(["a.jpg", "b.jpg", "c.jpg", "d.jpg"]) == 2
@@ -193,6 +198,16 @@ class TestResolveDuplicates:
         b = batch(p("a.jpg", 1, D13), p("b.jpg", 1, D14))
         b.keep("a.jpg", "b.jpg")
         assert b.photo("a.jpg").date == D13
+
+    def test_keep_takes_the_portal_lookup_of_the_other_when_it_has_none(self):
+        b = batch(p("a.jpg", 1), p("b.jpg", 1, system_date=D13))
+        b.keep("a.jpg", "b.jpg")
+        assert b.photo("a.jpg").date == D13 and b.photo("a.jpg").date_locked
+
+    def test_keep_does_not_replace_its_own_portal_lookup(self):
+        b = batch(p("a.jpg", 1, system_date=D14), p("b.jpg", 1, system_date=D13))
+        b.keep("a.jpg", "b.jpg")
+        assert b.photo("a.jpg").date == D14
 
     def test_keep_does_not_touch_a_system_date(self):
         b = batch(p("a.jpg", 1, system_date=D13), p("b.jpg", 1, D14))

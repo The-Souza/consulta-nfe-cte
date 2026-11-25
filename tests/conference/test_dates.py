@@ -101,6 +101,10 @@ class TestMask:
     def test_typing_key_by_key(self, keys, shown):
         assert self.type_keys(keys) == shown
 
+    @pytest.mark.parametrize("edited, shown", [("1411/2026", "14/11/2026"), ("14/112026", "14/11/2026")])
+    def test_deleting_a_slash_in_the_middle_puts_it_back(self, edited, shown):
+        assert mask(edited) == shown
+
     def test_a_full_date_typed_key_by_key_is_read(self):
         assert parse_date(self.type_keys("14112026"), TODAY) == date(2026, 11, 14)
 
