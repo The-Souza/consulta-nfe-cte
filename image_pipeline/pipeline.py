@@ -37,6 +37,7 @@ class CanhotoResult:
     sharpness: float = 0.0  # of the strip, or of the upright photo without QR
     hint: FilenameHint | None = None
     error: str | None = None  # why the photo could not be read
+    ocr_unavailable: bool = False  # no QR and Tesseract missing or failing, so the number was not tried
 
 
 def _open(path: Path) -> np.ndarray | None:
@@ -62,6 +63,7 @@ def _from_ocr(result: CanhotoResult, img: np.ndarray) -> None:
         number = ocr.process_image(str(result.path))
     except (pytesseract.TesseractNotFoundError, pytesseract.TesseractError) as error:
         logger.warning("OCR unavailable for %s: %s", result.path.name, error)
+        result.ocr_unavailable = True
         return
     if number:
         result.nfe, result.nfe_source = int(number), "ocr"

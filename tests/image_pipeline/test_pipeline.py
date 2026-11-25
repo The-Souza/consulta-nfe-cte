@@ -97,10 +97,19 @@ class TestOcrFallback:
         assert (result.nfe, result.nfe_source, result.error) == (None, None, None)
 
     @pytest.mark.parametrize("error", [pytesseract.TesseractNotFoundError(), pytesseract.TesseractError(1, "x")])
-    def test_tesseract_missing_or_failing_is_not_a_photo_error(self, tmp_path, ocr_reads, error):
+    def test_tesseract_missing_or_failing_is_flagged_not_a_photo_error(self, tmp_path, ocr_reads, error):
         ocr_reads(error=error)
         result = process(save(tmp_path / "foto.jpg", make_photo(make_stub())))
         assert (result.nfe, result.error) == (None, None)
+        assert result.ocr_unavailable
+
+    def test_ocr_that_reads_nothing_is_not_flagged_unavailable(self, tmp_path, ocr_reads):
+        ocr_reads(None)
+        assert not process(save(tmp_path / "foto.jpg", make_photo(make_stub()))).ocr_unavailable
+
+    def test_a_qr_read_never_flags_the_ocr(self, tmp_path, ocr_reads):
+        ocr_reads(error=pytesseract.TesseractNotFoundError())
+        assert not process(save(tmp_path / "foto.jpg", make_photo(make_stub(KEY)))).ocr_unavailable
 
 
 class TestBrokenFiles:
