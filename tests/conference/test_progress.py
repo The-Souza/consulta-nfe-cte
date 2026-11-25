@@ -126,6 +126,29 @@ class TestReconcile:
         path = put(tmp_path, "b.jpg", b"photo")
         assert reconcile({}, [path]) == ([], [path])
 
+    def test_a_photo_that_cannot_be_read_now_goes_to_reading_and_the_rest_still_reconciles(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """An antivirus or OneDrive holding one photo must not stop the whole review from opening."""
+        held = put(tmp_path, "held.jpg", b"photo")
+        ok = put(tmp_path, "ok.jpg", b"photo")
+        real_hash = progress.file_hash
+
+        def hash_or_fail(path):
+            if path == held:
+                raise PermissionError("held by another program")
+            return real_hash(path)
+
+        monkeypatch.setattr(progress, "file_hash", hash_or_fail)
+        saved = {"ok.jpg": Photo(name="ok.jpg", file_hash=real_hash(ok)), "held.jpg": Photo(name="held.jpg", file_hash="h")}
+        reuse, read = reconcile(saved, [held, ok])
+        assert [p.name for p in reuse] == ["ok.jpg"] and read == [held]
+        assert "held.jpg" in caplog.text
+
+    def test_a_photo_removed_after_the_listing_goes_to_reading(self, tmp_path):
+        gone = tmp_path / "gone.jpg"
+        assert reconcile({"gone.jpg": Photo(name="gone.jpg", file_hash="h")}, [gone]) == ([], [gone])
+
     def test_a_photo_that_left_the_folder_is_forgotten(self, tmp_path):
         path = put(tmp_path, "a.jpg", b"photo")
         saved = {
