@@ -48,8 +48,9 @@ def check(
 ) -> SystemInfo:
     """Looks the invoice up in the portal. Cancelled and SessionLost reach the caller, which stops.
 
-    A connection failure or any other HTTP error (a 404 or 400 that is not about the session) means the
-    portal could not answer now: "unavailable", so the screen lets the date be typed and asks again later.
+    A connection failure or any other request failure (a 404 or 400 that is not about the session, a
+    response cut mid-transfer, a redirect loop) means the portal could not answer now: "unavailable", so
+    the screen lets the date be typed and asks again later.
     """
 
     def call(fn: Callable):
@@ -64,6 +65,6 @@ def check(
         if status != PENDING:
             return SystemInfo("other", None, now(), status)
         details = call(lambda: client.get_invoice_details(session, oid, stop=stop))
-    except (api.ConnectionFailed, requests.HTTPError):
+    except (api.ConnectionFailed, requests.RequestException):
         return SystemInfo("unavailable", None, now())
     return SystemInfo("found", _delivery(details), now(), status)

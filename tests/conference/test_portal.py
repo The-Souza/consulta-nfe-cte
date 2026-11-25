@@ -99,8 +99,16 @@ class TestStates:
         assert run(fake).state == "unavailable"
 
     @pytest.mark.parametrize("where", ["lookup", "details"])
-    def test_another_http_error_is_unavailable(self, where):
-        failure = requests.HTTPError("404 Client Error")
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            requests.HTTPError("404 Client Error"),
+            requests.exceptions.ChunkedEncodingError("response cut mid-transfer"),
+            requests.TooManyRedirects("redirect loop"),
+        ],
+        ids=["http-error", "cut-response", "redirect-loop"],
+    )
+    def test_any_other_request_failure_is_unavailable(self, where, failure):
         fake = FakeApi([failure] if where == "lookup" else [("abc", "PENDENTE")], [failure])
         assert run(fake).state == "unavailable"
 
