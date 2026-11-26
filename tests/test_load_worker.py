@@ -19,6 +19,7 @@ class Run:
         self.known: list[list[Photo]] = []
         self.read: list[tuple[Photo, int, int]] = []
         self.done = 0
+        self.ocr_unavailable: bool | None = None
         self.cancelled = 0
         self.stop = stop or threading.Event()
         LoadWorker(
@@ -32,8 +33,9 @@ class Run:
             on_cancel=self._cancel,
         ).run()
 
-    def _done(self):
+    def _done(self, ocr_unavailable: bool):
         self.done += 1
+        self.ocr_unavailable = ocr_unavailable
 
     def _cancel(self):
         self.cancelled += 1
@@ -98,7 +100,7 @@ class TestReuse:
             files=[old, new], saved=saved, stop_event=threading.Event(),
             after_fn=lambda _delay, fn, *args: fn(*args),
             on_known=lambda photos: order.append("known"),
-            on_photo=lambda *_: None, on_done=lambda: None, on_cancel=lambda: None,
+            on_photo=lambda *_: None, on_done=lambda _ocr_unavailable: None, on_cancel=lambda: None,
         ).run()
         assert order == ["known", "read"]
 
@@ -175,6 +177,24 @@ class TestFailures:
         run = Run([gone])
         assert run.photos["gone.jpg"] == Photo("gone.jpg", "")
         assert run.done == 1
+
+
+class TestOcrUnavailable:
+    def test_a_load_with_ocr_working_says_so(self, tmp_path, results):
+        results["a.jpg"] = read(None)
+        assert Run([put(tmp_path, "a.jpg")]).ocr_unavailable is False
+
+    def test_a_photo_whose_number_was_never_tried_is_unread_and_reported(self, tmp_path, results):
+        files = [put(tmp_path, "a.jpg", b"a"), put(tmp_path, "b.jpg", b"b")]
+        results["a.jpg"] = read(None, ocr_unavailable=True)
+        results["b.jpg"] = read(222)
+        run = Run(files)
+        assert run.photos["a.jpg"].nfe is None
+        assert run.ocr_unavailable is True
+
+    def test_nothing_read_means_nothing_to_report(self, tmp_path, results):
+        path = put(tmp_path, "a.jpg")
+        assert Run([path], {"a.jpg": Photo("a.jpg", file_hash(path))}).ocr_unavailable is False
 
 
 class TestCancel:

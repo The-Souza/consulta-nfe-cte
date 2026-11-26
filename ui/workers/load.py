@@ -10,8 +10,11 @@ from conference.progress import file_hash, reconcile
 logger = logging.getLogger(__name__)
 
 
-def _read(path: Path) -> Photo:
-    """Any failure leaves the photo unread, for the number to be typed, instead of dropping it."""
+def _read(path: Path) -> tuple[Photo, bool]:
+    """The photo and whether its number was never tried because OCR is unavailable.
+
+    Any failure leaves the photo unread, for the number to be typed, instead of dropping it.
+    """
     try:
         digest = file_hash(path)
     except OSError:
@@ -22,8 +25,8 @@ def _read(path: Path) -> Photo:
         result = image_pipeline.process(path)
     except Exception:
         logger.exception("Could not read %s", path.name)
-        return Photo(path.name, digest)
-    return Photo(
+        return Photo(path.name, digest), False
+    photo = Photo(
         path.name,
         digest,
         nfe=result.nfe,
@@ -31,6 +34,7 @@ def _read(path: Path) -> Photo:
         rotation=result.rotation,
         sharpness=result.sharpness,
     )
+    return photo, result.ocr_unavailable
 
 
 class LoadWorker:
@@ -44,7 +48,7 @@ class LoadWorker:
         after_fn: Callable,
         on_known: Callable[[list[Photo]], None],
         on_photo: Callable[[Photo, int, int], None],
-        on_done: Callable[[], None],
+        on_done: Callable[[bool], None],
         on_cancel: Callable[[], None],
     ):
         self._files     = files
@@ -60,9 +64,14 @@ class LoadWorker:
         known, to_read = reconcile(self._saved, self._files)
         self._after(0, self._on_known, known)
         total = len(to_read)
+        # Without Tesseract every photo with no readable QR comes back unread: on_done gets it, so the
+        # screen can say the numbers were never tried instead of leaving them all to be typed unexplained.
+        ocr_unavailable = False
         for done, path in enumerate(to_read, start=1):
             if self._stop.is_set():
                 self._after(0, self._on_cancel)
                 return
-            self._after(0, self._on_photo, _read(path), done, total)
-        self._after(0, self._on_done)
+            photo, no_ocr = _read(path)
+            ocr_unavailable = ocr_unavailable or no_ocr
+            self._after(0, self._on_photo, photo, done, total)
+        self._after(0, self._on_done, ocr_unavailable)
