@@ -24,6 +24,15 @@ def restore_button(button: ctk.CTkButton, previous: dict) -> None:
     button.configure(**previous)
 
 
+def link_button(parent, text: str, command: Callable, icon: str = "chevron-right") -> ctk.CTkButton:
+    """A borderless text button, as the links between the new and the old upload flow."""
+    return ctk.CTkButton(
+        parent, text=text, image=get_icon(icon, 14, theme.TEXT_LABEL), compound="left", width=0, height=28,
+        corner_radius=theme.RADIUS_INPUT, fg_color=theme.TRANSPARENT, hover_color=theme.SURFACE_2,
+        text_color=theme.TEXT_LABEL, font=theme.font(theme.FONT_SIZE_BODY), command=command,
+    )
+
+
 def set_enabled(button: ctk.CTkButton, enabled: bool, icon: str, color: str = theme.TEXT_ON_PRIMARY,
                 size: int = 16) -> None:
     """CTkButton dims the text of a disabled button but leaves its image as it was: dim the icon too."""

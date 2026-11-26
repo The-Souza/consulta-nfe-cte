@@ -25,6 +25,7 @@ ICONS = [
     "eye-off",
     "file-check",
     "file-search",
+    "folder",
     "funnel",
     "log-out",
     "rotate-cw",
