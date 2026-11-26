@@ -6,7 +6,7 @@ from config import ICON_FILE
 from ui.frames.login import LoginFrame
 from ui.frames.home import HomeFrame
 from ui.frames.search import SearchFrame
-from ui.frames.upload import UploadFrame
+from ui.frames.upload_legacy import LegacyUploadFrame
 from ui.titlebar import apply_titlebar
 from ui.window_size import fit_window, work_area
 
@@ -85,7 +85,7 @@ class App(ctk.CTk):
         if self._home_frame:
             self._home_frame.pack_forget()
         self._large_window(920, 720, 700, 560)
-        self._upload_frame = UploadFrame(
+        self._upload_frame = LegacyUploadFrame(
             self, self.session, self._user_name,
             on_logout=self._back_to_login,
             on_back=self._back_to_home,

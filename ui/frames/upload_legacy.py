@@ -22,7 +22,7 @@ _COLS_R = [("Nº", 50), ("Arquivo original", 280), ("NF-e detectada", 140), ("St
 _COLS_U = [("Nº", 50), ("NF-e", 120), ("Status", 180)]
 
 
-class UploadFrame(ctk.CTkFrame):
+class LegacyUploadFrame(ctk.CTkFrame):
     def __init__(self, parent, session, user_name: str, on_logout, on_back=None, relogin: Callable[[], None] | None = None):
         super().__init__(parent, fg_color="transparent")
         self._session       = session
