@@ -1,6 +1,6 @@
 import pytest
 
-from conference.folders import WorkFolder
+from conference.folders import WorkFolder, work_root
 
 
 @pytest.fixture
@@ -14,6 +14,18 @@ def put(folder, name: str, content: bytes = b"photo"):
     path = folder / name
     path.write_bytes(content)
     return path
+
+
+class TestWorkRoot:
+    def test_a_regular_folder_is_the_work_folder(self, tmp_path):
+        assert work_root(tmp_path / "Canhotos") == tmp_path / "Canhotos"
+
+    @pytest.mark.parametrize("name", ["entrada", "Entrada", "ENTRADA"])
+    def test_picking_entrada_itself_uses_the_folder_above(self, tmp_path, name):
+        assert work_root(tmp_path / "Canhotos" / name) == tmp_path / "Canhotos"
+
+    def test_a_name_that_only_contains_entrada_is_kept(self, tmp_path):
+        assert work_root(tmp_path / "entradas") == tmp_path / "entradas"
 
 
 class TestEnsure:
