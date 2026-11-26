@@ -49,7 +49,7 @@ class LoadWorker:
         on_known: Callable[[list[Photo]], None],
         on_photo: Callable[[Photo, int, int], None],
         on_done: Callable[[bool], None],
-        on_cancel: Callable[[], None],
+        on_cancel: Callable[[bool], None],
     ):
         self._files     = files
         self._saved     = saved
@@ -64,12 +64,12 @@ class LoadWorker:
         known, to_read = reconcile(self._saved, self._files)
         self._after(0, self._on_known, known)
         total = len(to_read)
-        # Without Tesseract every photo with no readable QR comes back unread: on_done gets it, so the
-        # screen can say the numbers were never tried instead of leaving them all to be typed unexplained.
+        # Without Tesseract every photo with no readable QR comes back unread: on_done and on_cancel get it,
+        # so the screen can say the numbers were never tried instead of leaving them all to be typed unexplained.
         ocr_unavailable = False
         for done, path in enumerate(to_read, start=1):
             if self._stop.is_set():
-                self._after(0, self._on_cancel)
+                self._after(0, self._on_cancel, ocr_unavailable)
                 return
             photo, no_ocr = _read(path)
             ocr_unavailable = ocr_unavailable or no_ocr

@@ -37,8 +37,9 @@ class Run:
         self.done += 1
         self.ocr_unavailable = ocr_unavailable
 
-    def _cancel(self):
+    def _cancel(self, ocr_unavailable: bool):
         self.cancelled += 1
+        self.ocr_unavailable = ocr_unavailable
 
     @property
     def photos(self) -> dict[str, Photo]:
@@ -100,7 +101,8 @@ class TestReuse:
             files=[old, new], saved=saved, stop_event=threading.Event(),
             after_fn=lambda _delay, fn, *args: fn(*args),
             on_known=lambda photos: order.append("known"),
-            on_photo=lambda *_: None, on_done=lambda _ocr_unavailable: None, on_cancel=lambda: None,
+            on_photo=lambda *_: None, on_done=lambda _ocr_unavailable: None,
+            on_cancel=lambda _ocr_unavailable: None,
         ).run()
         assert order == ["known", "read"]
 
@@ -191,6 +193,19 @@ class TestOcrUnavailable:
         run = Run(files)
         assert run.photos["a.jpg"].nfe is None
         assert run.ocr_unavailable is True
+
+    def test_a_cancelled_load_still_reports_it(self, tmp_path, results):
+        stop = threading.Event()
+        files = [put(tmp_path, "a.jpg", b"a"), put(tmp_path, "b.jpg", b"b")]
+        results["a.jpg"] = lambda: stop.set() or read(None, ocr_unavailable=True)
+        run = Run(files, stop=stop)
+        assert run.cancelled == 1
+        assert run.ocr_unavailable is True
+
+    def test_a_load_cancelled_before_reading_has_nothing_to_report(self, tmp_path, results):
+        stop = threading.Event()
+        stop.set()
+        assert Run([put(tmp_path, "a.jpg")], stop=stop).ocr_unavailable is False
 
     def test_nothing_read_means_nothing_to_report(self, tmp_path, results):
         path = put(tmp_path, "a.jpg")
