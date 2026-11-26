@@ -29,6 +29,7 @@ ICONS = [
     "folder",
     "funnel",
     "log-out",
+    "plus",
     "rotate-cw",
     "search",
     "square",
