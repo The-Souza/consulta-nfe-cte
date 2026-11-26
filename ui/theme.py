@@ -56,6 +56,9 @@ BANNER: dict[str, tuple[str, str, str]] = {
 PANEL_BAR = "#3f8f66"
 SELECTED_BORDER = "#2f7a52"
 
+# Done step of the upload header: the check over the PROGRESS circle
+STEP_DONE_MARK = "#0f1f16"
+
 # Radii
 RADIUS_INPUT = 8
 RADIUS_ICON = 10
