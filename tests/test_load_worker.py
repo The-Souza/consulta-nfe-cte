@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from conference.photo import Photo
+from conference.photo import MAX_NFE, Photo
 from conference.progress import file_hash
 from image_pipeline import CanhotoResult
 from ui.workers import load
@@ -161,6 +161,17 @@ class TestFailures:
         photo = Run([path]).photos["a.jpg"]
         assert photo.nfe is None
         assert photo.file_hash == file_hash(path)
+
+    @pytest.mark.parametrize("nfe", [0, -1, MAX_NFE + 1])
+    def test_a_number_out_of_range_is_unread(self, tmp_path, results, nfe):
+        results["a.jpg"] = CanhotoResult(Path("x"), nfe=nfe, nfe_source="ocr", rotation=90)
+        photo = Run([put(tmp_path, "a.jpg")]).photos["a.jpg"]
+        assert (photo.nfe, photo.nfe_source) == (None, None)
+        assert photo.rotation == 90
+
+    def test_the_highest_number_is_kept(self, tmp_path, results):
+        results["a.jpg"] = read(MAX_NFE)
+        assert Run([put(tmp_path, "a.jpg")]).photos["a.jpg"].nfe == MAX_NFE
 
     def test_a_photo_that_breaks_the_pipeline_is_unread_and_the_rest_is_read(self, tmp_path, results, caplog):
         files = [put(tmp_path, "a.jpg", b"a"), put(tmp_path, "b.jpg", b"b")]

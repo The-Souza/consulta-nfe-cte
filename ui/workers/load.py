@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Callable
 
 import image_pipeline
-from conference.photo import Photo
+from conference.photo import MAX_NFE, Photo
 from conference.progress import file_hash, reconcile
 
 logger = logging.getLogger(__name__)
@@ -26,14 +26,10 @@ def _read(path: Path) -> tuple[Photo, bool]:
     except Exception:
         logger.exception("Could not read %s", path.name)
         return Photo(path.name, digest), False
-    photo = Photo(
-        path.name,
-        digest,
-        nfe=result.nfe,
-        nfe_source=result.nfe_source,
-        rotation=result.rotation,
-        sharpness=result.sharpness,
-    )
+    photo = Photo(path.name, digest, rotation=result.rotation, sharpness=result.sharpness)
+    # The OCR can read a smudged stub as zeros: a number set_nfe would refuse leaves the photo unread.
+    if result.nfe is not None and 1 <= result.nfe <= MAX_NFE:
+        photo.nfe, photo.nfe_source = result.nfe, result.nfe_source
     return photo, result.ocr_unavailable
 
 
