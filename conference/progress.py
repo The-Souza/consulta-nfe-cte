@@ -118,7 +118,11 @@ def save(folder: Path, photos: Iterable[Photo]) -> None:
     partial = path.with_name(path.name + ".tmp")
     data = {"version": VERSION, "photos": {p.name: _to_json(p) for p in photos if not p.discarded}}
     try:
-        partial.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        with partial.open("w", encoding="utf-8") as file:
+            file.write(json.dumps(data, ensure_ascii=False, indent=1))
+            file.flush()
+            # Without it, a power cut right after the swap can leave an empty file in place of the progress.
+            os.fsync(file.fileno())
         os.replace(partial, path)
     except BaseException:
         partial.unlink(missing_ok=True)

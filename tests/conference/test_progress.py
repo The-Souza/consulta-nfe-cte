@@ -109,6 +109,24 @@ class TestBrokenFile:
         assert list(load(tmp_path)) == ["a.jpg"]
         assert sorted(p.name for p in tmp_path.iterdir()) == [FILE_NAME]
 
+    def test_the_content_reaches_the_disk_before_the_swap(self, tmp_path, monkeypatch):
+        calls = []
+        real_fsync, real_replace = progress.os.fsync, progress.os.replace
+
+        def fsync(fd):
+            calls.append("fsync")
+            real_fsync(fd)
+
+        def replace(src, dst):
+            calls.append("replace")
+            real_replace(src, dst)
+
+        monkeypatch.setattr(progress.os, "fsync", fsync)
+        monkeypatch.setattr(progress.os, "replace", replace)
+        save(tmp_path, [full_photo("a.jpg")])
+        assert calls == ["fsync", "replace"]
+        assert list(load(tmp_path)) == ["a.jpg"]
+
 
 class TestReconcile:
     def test_an_unchanged_photo_is_reused(self, tmp_path):
