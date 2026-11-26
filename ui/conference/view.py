@@ -13,9 +13,24 @@ from ui.conference.bottom_bar import BottomBar
 from ui.conference.empty_state import EmptyState
 from ui.conference.steps import Steps
 from ui.icons import get_icon
+from ui.widgets.banner import Banner
 from ui.widgets.topbar import make_topbar
+from utils.status import Tone
 
 logger = logging.getLogger(__name__)
+
+
+def _prepared(root: Path) -> tuple[WorkFolder | None, str | None]:
+    """The work folder with its subfolders created, or None and what to tell the user."""
+    if not root.is_dir():
+        return None, f"A pasta {root} não foi encontrada. Selecione a pasta de novo."
+    work = WorkFolder(root)
+    try:
+        work.ensure()
+    except OSError:
+        logger.warning("Could not prepare the work folder %s", root, exc_info=True)
+        return None, f"Não foi possível usar a pasta {root}. Selecione outra pasta."
+    return work, None
 
 
 class ConferenceView(ctk.CTkFrame):
@@ -30,6 +45,8 @@ class ConferenceView(ctk.CTkFrame):
         main = ctk.CTkFrame(self, fg_color=theme.TRANSPARENT)
         main.pack(fill="both", expand=True, padx=20, pady=(18, theme.SPACE_LG))
         self._build_header(main)
+        self.banner = Banner(main, theme.BG)
+        self.banner.pack(fill="x", pady=(0, theme.SPACE_SM))
         self.bottom = BottomBar(main, on_legacy=on_legacy)
         self.bottom.pack(side="bottom", fill="x")
         self.empty = EmptyState(main, on_pick=self._pick_folder)
@@ -52,22 +69,16 @@ class ConferenceView(ctk.CTkFrame):
         )
 
     # ------------------------------------------------------------------
-    # PASTA DE TRABALHO
+    # WORK FOLDER
     # ------------------------------------------------------------------
 
     def _open(self, root: Path | None) -> None:
         if root is None:
             self._show_empty(None)
             return
-        if not root.is_dir():
-            self._show_empty(f"A pasta {root} não foi encontrada. Selecione a pasta de novo.")
-            return
-        work = WorkFolder(root)
-        try:
-            work.ensure()
-        except OSError:
-            logger.warning("Could not prepare the work folder %s", root, exc_info=True)
-            self._show_empty(f"Não foi possível usar a pasta {root}. Selecione outra pasta.")
+        work, problem = _prepared(root)
+        if work is None:
+            self._show_empty(problem)
             return
         self._work = work
         self._show_folder()
@@ -81,15 +92,25 @@ class ConferenceView(ctk.CTkFrame):
         if not picked:
             return
         root = work_root(Path(picked))
+        work, problem = _prepared(root)
+        if work is None:
+            # A folder that does not work is never saved, and the one already open stays on screen.
+            if self._work is None:
+                self._show_empty(problem)
+            else:
+                self.banner.show(Tone.WARNING, problem)
+            return
         try:
             local_config.set_work_folder(root)
         except OSError:
             # The folder still works for now; it is asked again next time.
             logger.warning("Could not save the work folder %s", root, exc_info=True)
-        self._open(root)
+        self._work = work
+        self._show_folder()
 
     def _show_empty(self, notice: str | None) -> None:
         self._work = None
+        self.banner.hide()
         self.steps.set_active(1)
         self.btn_folder.pack_forget()
         self.card.pack_forget()
@@ -98,6 +119,7 @@ class ConferenceView(ctk.CTkFrame):
         self.bottom.update_summary(self._batch.summary())
 
     def _show_folder(self) -> None:
+        self.banner.hide()
         self.steps.set_active(2)
         self.btn_folder.configure(text=f" {self._work.inputs_dir}")
         self.btn_folder.pack(side="right")

@@ -423,5 +423,8 @@ class LegacyUploadFrame(ctk.CTkFrame):
         self._on_logout()
 
     def _new_flow(self) -> None:
+        # The link sits next to the counters: a click by mistake must not cut a rename or an upload short.
+        if self._running:
+            return
         self._stop_event.set()
         self._on_new_flow()
