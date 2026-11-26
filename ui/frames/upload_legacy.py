@@ -7,7 +7,7 @@ from typing import Callable
 import customtkinter as ctk
 
 from ui import theme
-from ui.widgets.buttons import restore_button, show_cancel
+from ui.widgets.buttons import link_button, restore_button, show_cancel
 from ui.widgets.chip import make_chip
 from ui.widgets.history import HistoryPanel
 from ui.widgets.progress import make_progress, set_message
@@ -23,12 +23,14 @@ _COLS_U = [("Nº", 50), ("NF-e", 120), ("Status", 180)]
 
 
 class LegacyUploadFrame(ctk.CTkFrame):
-    def __init__(self, parent, session, user_name: str, on_logout, on_back=None, relogin: Callable[[], None] | None = None):
+    def __init__(self, parent, session, user_name: str, on_logout, on_back=None, relogin: Callable[[], None] | None = None,
+                 on_new_flow: Callable[[], None] | None = None):
         super().__init__(parent, fg_color="transparent")
         self._session       = session
         self._relogin       = relogin
         self._on_logout     = on_logout
         self._on_back     = on_back
+        self._on_new_flow   = on_new_flow
         self._stop_event    = threading.Event()
         self._running       = False
         self._step          = "rename"
@@ -100,6 +102,10 @@ class LegacyUploadFrame(ctk.CTkFrame):
         self.chip_dup   = make_chip(stat, Tone.WARNING)
         self.chip_error = make_chip(stat, Tone.ERROR)
         self._reset_rename_chips()
+        if self._on_new_flow:
+            link_button(bar, "Voltar ao fluxo novo", self._new_flow, icon="chevron-left").pack(
+                side="left", padx=(theme.SPACE_MD, 0),
+            )
 
         self._frame_upload_bar = ctk.CTkFrame(bar, fg_color="transparent")
 
@@ -415,3 +421,10 @@ class LegacyUploadFrame(ctk.CTkFrame):
     def _logout(self) -> None:
         self._stop_event.set()
         self._on_logout()
+
+    def _new_flow(self) -> None:
+        # The link sits next to the counters: a click by mistake must not cut a rename or an upload short.
+        if self._running:
+            return
+        self._stop_event.set()
+        self._on_new_flow()

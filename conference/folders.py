@@ -14,6 +14,12 @@ DISCARDED_FOLDER = "descartadas"
 PHOTO_EXTENSIONS = (".jpg", ".jpeg", ".png")
 
 
+def work_root(picked: Path) -> Path:
+    """The work folder for a folder the user picked: picking entrada/ itself means the folder above it, so
+    the photos are not looked for in entrada/entrada/."""
+    return picked.parent if picked.name.casefold() == INPUT_FOLDER else picked
+
+
 class WorkFolder:
     def __init__(self, root: Path):
         self.root = root
