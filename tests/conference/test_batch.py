@@ -34,6 +34,12 @@ class TestOrderAndAdd:
         assert len(b) == 1 and b.photo("a.jpg").nfe == 2
 
 
+def test_rows_pair_each_visible_photo_with_its_status_in_order():
+    b = batch(p("c.jpg", nfe=1), p("a.jpg", nfe=1), p("b.jpg"), p("d.jpg", nfe=2, discarded=True))
+    assert [(photo.name, status) for photo, status in b.rows()] == [
+        ("a.jpg", Status.DUPLICATE), ("b.jpg", Status.UNREAD), ("c.jpg", Status.DUPLICATE)]
+
+
 class TestDuplicates:
     def test_same_invoice_on_two_photos(self):
         b = batch(p("a.jpg", 1), p("b.jpg", 1), p("c.jpg", 2), p("d.jpg"))

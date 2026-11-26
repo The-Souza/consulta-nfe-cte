@@ -1,6 +1,6 @@
 import pytest
 
-from conference.folders import WorkFolder, work_root
+from conference.folders import WorkFolder, snapshot, work_root
 
 
 @pytest.fixture
@@ -26,6 +26,27 @@ class TestWorkRoot:
 
     def test_a_name_that_only_contains_entrada_is_kept(self, tmp_path):
         assert work_root(tmp_path / "entradas") == tmp_path / "entradas"
+
+
+class TestSnapshot:
+    def test_the_same_files_give_the_same_snapshot(self, work):
+        files = [put(work.inputs_dir, "a.jpg"), put(work.inputs_dir, "b.jpg")]
+        assert snapshot(files) == snapshot(files)
+        assert set(snapshot(files)) == {"a.jpg", "b.jpg"}
+
+    def test_a_new_file_changes_it(self, work):
+        before = snapshot([put(work.inputs_dir, "a.jpg")])
+        after = snapshot([work.inputs_dir / "a.jpg", put(work.inputs_dir, "b.jpg")])
+        assert before != after
+
+    def test_a_changed_file_changes_it(self, work):
+        path = put(work.inputs_dir, "a.jpg")
+        before = snapshot([path])
+        path.write_bytes(b"another photo")
+        assert snapshot([path]) != before
+
+    def test_a_file_gone_since_the_listing_is_left_out(self, work):
+        assert snapshot([put(work.inputs_dir, "a.jpg"), work.inputs_dir / "gone.jpg"]).keys() == {"a.jpg"}
 
 
 class TestEnsure:
