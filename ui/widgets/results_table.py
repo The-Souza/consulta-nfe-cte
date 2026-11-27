@@ -7,7 +7,7 @@ from ui import theme
 from ui.widgets.scrollbar import hide_when_idle
 from utils.status import Tone, search_tone
 
-_STYLE = "Canhotos.Treeview"
+STYLE = "Canhotos.Treeview"
 _DASH = "—"
 _HEADING_PAD_Y = 10
 
@@ -23,33 +23,33 @@ _COLUMNS = [
 ]
 
 
-def _scaled(widget, value: float) -> int:
+def scaled(widget, value: float) -> int:
     # ttk is not scaled by CustomTkinter: apply the Windows zoom by hand.
     return round(value * ctk.ScalingTracker.get_widget_scaling(widget))
 
 
-def _configure_style(widget) -> tuple[tkinter.font.Font, ...]:
+def configure_style(widget) -> tuple[tkinter.font.Font, ...]:
     """Returns the fonts it created: the caller must keep them, or Python collects them, Tk deletes the
     named fonts and the Treeview falls back to the default font."""
     style = ttk.Style(widget)
     style.theme_use("clam")  # the only built-in theme that honors these colors on Windows
-    body = tkinter.font.Font(family=theme.FONT_FAMILY, size=-_scaled(widget, theme.FONT_SIZE_BODY))
+    body = tkinter.font.Font(family=theme.FONT_FAMILY, size=-scaled(widget, theme.FONT_SIZE_BODY))
     heading = tkinter.font.Font(
-        family=theme.FONT_FAMILY, size=-_scaled(widget, theme.FONT_SIZE_XS), weight="bold",
+        family=theme.FONT_FAMILY, size=-scaled(widget, theme.FONT_SIZE_XS), weight="bold",
     )
-    style.layout(_STYLE, [(f"{_STYLE}.treearea", {"sticky": "nswe"})])  # no border
+    style.layout(STYLE, [(f"{STYLE}.treearea", {"sticky": "nswe"})])  # no border
     style.configure(
-        _STYLE, background=theme.SURFACE, fieldbackground=theme.SURFACE, foreground=theme.TEXT,
-        rowheight=_scaled(widget, 34), borderwidth=0, font=body,
+        STYLE, background=theme.SURFACE, fieldbackground=theme.SURFACE, foreground=theme.TEXT,
+        rowheight=scaled(widget, 34), borderwidth=0, font=body,
     )
-    style.map(_STYLE, background=[("selected", theme.SURFACE_2)], foreground=[("selected", theme.TEXT)])
+    style.map(STYLE, background=[("selected", theme.SURFACE_2)], foreground=[("selected", theme.TEXT)])
     # Horizontal padding kept small: the cells have none, so a larger one pushed the headings right of
     # the values below them.
     style.configure(
-        f"{_STYLE}.Heading", background=theme.SURFACE, foreground=theme.TEXT_MUTED, relief="flat",
-        borderwidth=0, font=heading, padding=(_scaled(widget, 2), _scaled(widget, _HEADING_PAD_Y)),
+        f"{STYLE}.Heading", background=theme.SURFACE, foreground=theme.TEXT_MUTED, relief="flat",
+        borderwidth=0, font=heading, padding=(scaled(widget, 2), scaled(widget, _HEADING_PAD_Y)),
     )
-    style.map(f"{_STYLE}.Heading", background=[("active", theme.SURFACE)])
+    style.map(f"{STYLE}.Heading", background=[("active", theme.SURFACE)])
     return body, heading
 
 
@@ -74,16 +74,16 @@ class ResultsTable(ctk.CTkFrame):
 
     def __init__(self, parent):
         super().__init__(parent, fg_color=theme.SURFACE, corner_radius=0)
-        self._fonts = _configure_style(self)
+        self._fonts = configure_style(self)
 
         self._tree = ttk.Treeview(
             # The rows are read-only: a click shouldn't leave one highlighted
-            self, columns=[c[0] for c in _COLUMNS], show="headings", style=_STYLE, selectmode="none",
+            self, columns=[c[0] for c in _COLUMNS], show="headings", style=STYLE, selectmode="none",
             takefocus=False,
         )
         for col, heading, width, anchor, stretch in _COLUMNS:
             self._tree.heading(col, text=heading, anchor=anchor)
-            self._tree.column(col, width=_scaled(self, width), minwidth=_scaled(self, 40), anchor=anchor,
+            self._tree.column(col, width=scaled(self, width), minwidth=scaled(self, 40), anchor=anchor,
                               stretch=stretch)
         self._tree.tag_configure("odd", background=theme.SURFACE_2)
         for tone in Tone:
@@ -95,7 +95,7 @@ class ResultsTable(ctk.CTkFrame):
             button_color=theme.SCROLLBAR_BUTTON, button_hover_color=theme.SCROLLBAR_BUTTON_HOVER,
         )
         self._tree.configure(yscrollcommand=hide_when_idle(scrollbar))
-        heading_height = self._fonts[1].metrics("linespace") + 2 * _scaled(self, _HEADING_PAD_Y)
+        heading_height = self._fonts[1].metrics("linespace") + 2 * scaled(self, _HEADING_PAD_Y)
         # The scrollbar starts below the headings: it scrolls the rows only and doesn't cut the line.
         # heading_height is in physical px, but a CTk widget's pack() scales pady by the zoom again.
         scaling = ctk.ScalingTracker.get_widget_scaling(self)

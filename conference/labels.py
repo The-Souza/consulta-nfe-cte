@@ -2,8 +2,33 @@
 
 from conference.batch import Summary
 from conference.dates import short
+from conference.names import shorten_middle
+from conference.photo import Photo, Status
+from utils.status import Tone
 
 _MAX_DATES = 4
+_DASH = "—"
+
+# The badge colors of the design
+_TONES = {
+    Status.UNREAD: Tone.ERROR,
+    Status.DUPLICATE: Tone.ERROR,
+    Status.NO_DATE: Tone.WARNING,
+    Status.TO_CHECK: Tone.INFO,
+    Status.READY: Tone.OK,
+    Status.DISCARDED: Tone.NEUTRAL,
+}
+
+
+def row_values(photo: Photo, status: Status) -> tuple[str, str, str, str]:
+    """NF-e, file name, date and status of a list row (R5)."""
+    nfe = str(photo.nfe) if photo.nfe is not None else Status.UNREAD.label
+    when = short(photo.date) if photo.date is not None else _DASH
+    return nfe, shorten_middle(photo.name), when, status.label
+
+
+def status_tone(status: Status) -> Tone:
+    return _TONES[status]
 
 
 def _plural(count: int, one: str, many: str) -> str:

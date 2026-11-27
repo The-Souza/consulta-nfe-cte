@@ -36,6 +36,7 @@ class BottomBar(ctk.CTkFrame):
 
     def update_summary(self, summary: Summary) -> None:
         ready, rest = summary_parts(summary)
-        self._ready.configure(text=ready)
+        # Green only when there is something ready; "Nenhuma pronta" stays muted.
+        self._ready.configure(text=ready, text_color=theme.STATUS["ok"][0] if summary.ready else theme.TEXT_MUTED)
         self._rest.configure(text=rest)
         self._send.configure(text=send_label(summary.ready))

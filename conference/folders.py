@@ -14,6 +14,19 @@ DISCARDED_FOLDER = "descartadas"
 PHOTO_EXTENSIONS = (".jpg", ".jpeg", ".png")
 
 
+def snapshot(paths: Iterable[Path]) -> dict[str, tuple[int, int]]:
+    """Name → (size, modification time) of each photo: a cheap way to tell whether entrada/ changed
+    without hashing every file. A file gone since the listing is left out."""
+    result = {}
+    for path in paths:
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        result[path.name] = (stat.st_size, stat.st_mtime_ns)
+    return result
+
+
 def work_root(picked: Path) -> Path:
     """The work folder for a folder the user picked: picking entrada/ itself means the folder above it, so
     the photos are not looked for in entrada/entrada/."""

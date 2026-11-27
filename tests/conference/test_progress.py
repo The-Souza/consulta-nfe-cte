@@ -144,24 +144,56 @@ class TestReconcile:
         path = put(tmp_path, "b.jpg", b"photo")
         assert reconcile({}, [path]) == ([], [path])
 
-    def test_a_photo_that_cannot_be_read_now_goes_to_reading_and_the_rest_still_reconciles(
-        self, tmp_path, monkeypatch, caplog
-    ):
-        """An antivirus or OneDrive holding one photo must not stop the whole review from opening."""
-        held = put(tmp_path, "held.jpg", b"photo")
-        ok = put(tmp_path, "ok.jpg", b"photo")
+    @pytest.fixture
+    def held(self, tmp_path, monkeypatch):
+        """A photo an antivirus or OneDrive holds while the review opens: hashing it fails."""
+        path = put(tmp_path, "held.jpg", b"photo")
         real_hash = progress.file_hash
 
-        def hash_or_fail(path):
-            if path == held:
+        def hash_or_fail(target):
+            if target == path:
                 raise PermissionError("held by another program")
-            return real_hash(path)
+            return real_hash(target)
 
         monkeypatch.setattr(progress, "file_hash", hash_or_fail)
-        saved = {"ok.jpg": Photo(name="ok.jpg", file_hash=real_hash(ok)), "held.jpg": Photo(name="held.jpg", file_hash="h")}
+        return path
+
+    def test_a_saved_photo_that_cannot_be_checked_now_keeps_its_review(self, tmp_path, held, caplog):
+        """Reading it again would throw away the typed number, date and confirmation; it is checked next time."""
+        ok = put(tmp_path, "ok.jpg", b"other photo")
+        saved = {
+            "ok.jpg": Photo(name="ok.jpg", file_hash=file_hash(ok)),
+            "held.jpg": Photo(name="held.jpg", file_hash="h", nfe=123, nfe_source="typed", confirmed=True),
+        }
         reuse, read = reconcile(saved, [held, ok])
-        assert [p.name for p in reuse] == ["ok.jpg"] and read == [held]
+        assert [p.name for p in reuse] == ["held.jpg", "ok.jpg"] and read == []
+        assert (reuse[0].nfe, reuse[0].nfe_source) == (123, "typed")
         assert "held.jpg" in caplog.text
+
+    def test_a_photo_that_cannot_be_checked_now_must_be_confirmed_again(self, held):
+        """It may be held because a new image is replacing it: it is never left ready to send unverified."""
+        saved = {"held.jpg": Photo(name="held.jpg", file_hash="h", nfe=123, confirmed=True)}
+        reuse, _ = reconcile(saved, [held])
+        assert reuse[0].confirmed is False
+
+    def test_a_photo_saved_without_hash_keeps_what_the_user_typed_and_gets_its_hash(self, tmp_path):
+        """Its first hash failed (an antivirus scanning the new copy): a later load must not read it from
+        scratch over the typed number and date."""
+        path = put(tmp_path, "a.jpg", b"photo")
+        saved = {"a.jpg": Photo(name="a.jpg", file_hash="", nfe=55, nfe_source="typed", typed_date=date(2026, 11, 20),
+                                confirmed=True)}
+        reuse, read = reconcile(saved, [path])
+        assert read == [] and reuse[0].file_hash == file_hash(path)
+        assert (reuse[0].nfe, reuse[0].typed_date, reuse[0].confirmed) == (55, date(2026, 11, 20), False)
+
+    def test_a_photo_saved_without_hash_and_untouched_is_read_again(self, tmp_path):
+        """Nothing typed to lose: reading it again gives its number another chance."""
+        path = put(tmp_path, "a.jpg", b"photo")
+        saved = {"a.jpg": Photo(name="a.jpg", file_hash="", nfe=None)}
+        assert reconcile(saved, [path]) == ([], [path])
+
+    def test_a_new_photo_that_cannot_be_checked_now_goes_to_reading(self, held):
+        assert reconcile({}, [held]) == ([], [held])
 
     def test_a_photo_removed_after_the_listing_goes_to_reading(self, tmp_path):
         gone = tmp_path / "gone.jpg"

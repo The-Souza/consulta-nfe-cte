@@ -1,11 +1,43 @@
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
 from conference.batch import Summary
-from conference.labels import send_label, summary_parts
+from conference.labels import row_values, send_label, status_tone, summary_parts
+from conference.photo import Photo, Status, SystemInfo
+from utils.status import Tone
 
 NOV_14, NOV_15, NOV_16, NOV_17, NOV_18 = (date(2026, 11, d) for d in range(14, 19))
+LONG_NAME = "WhatsApp Image 2026-11-14 at 18.42.07 (1).jpeg"
+
+
+class TestRow:
+    def test_a_read_photo_shows_its_number_name_date_and_status(self):
+        photo = Photo("a.jpg", "h", nfe=4406833, typed_date=NOV_14)
+        assert row_values(photo, Status.TO_CHECK) == ("4406833", "a.jpg", "14/11", "A conferir")
+
+    def test_an_unread_photo_says_so_and_has_no_date(self):
+        assert row_values(Photo("a.jpg", "h"), Status.UNREAD) == ("Não lida", "a.jpg", "—", "Não lida")
+
+    def test_the_system_date_is_shown(self):
+        photo = Photo("a.jpg", "h", nfe=1, system=SystemInfo("found", NOV_15, datetime(2026, 11, 20)))
+        assert row_values(photo, Status.TO_CHECK)[2] == "15/11"
+
+    def test_a_long_name_is_cut_in_the_middle(self):
+        assert row_values(Photo(LONG_NAME, "h"), Status.UNREAD)[1] == "WhatsApp Image 2026-11-1…(1).jpeg"
+
+
+class TestTone:
+    @pytest.mark.parametrize(("status", "tone"), [
+        (Status.UNREAD, Tone.ERROR),
+        (Status.DUPLICATE, Tone.ERROR),
+        (Status.NO_DATE, Tone.WARNING),
+        (Status.TO_CHECK, Tone.INFO),
+        (Status.READY, Tone.OK),
+        (Status.DISCARDED, Tone.NEUTRAL),
+    ])
+    def test_each_status_has_the_design_color(self, status, tone):
+        assert status_tone(status) is tone
 
 
 class TestSummary:
