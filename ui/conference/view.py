@@ -30,6 +30,7 @@ _RENDER_INTERVAL_MS = 250
 _SAVE_DELAY_MS = 500
 _PHOTO_TYPES = [("Fotos", "*.jpg *.jpeg *.png")]
 _EMPTY_LIST = "Nenhuma foto na pasta entrada. Use “Adicionar fotos” ou jogue as fotos lá."
+_READING = "Lendo as fotos…"
 _OCR_MISSING = (
     "O OCR não está disponível: as fotos sem QR legível ficaram como “Não lida”. Confira a instalação do Tesseract."
 )
@@ -77,6 +78,8 @@ class ConferenceView(ctk.CTkFrame):
         self._save_job: str | None = None
         self._dirty = False  # photos changed since the last save
         self._add_style: dict = {}
+        # Set on Voltar/Sair: worker callbacks already queued must not touch the gone widgets nor save again.
+        self._destroyed = False
         make_topbar(self, "Upload de canhotos", user_name, on_logout, on_back=on_back)
         main = ctk.CTkFrame(self, fg_color=theme.TRANSPARENT)
         main.pack(fill="both", expand=True, padx=20, pady=(18, theme.SPACE_LG))
@@ -162,6 +165,12 @@ class ConferenceView(ctk.CTkFrame):
         self._work = work
         self._batch = Batch()
         self._snapshot = {}
+        # A failed save of the previous folder must not carry over: saving the still empty batch would wipe
+        # this folder's progress.
+        self._dirty = False
+        if self._save_job is not None:
+            self.after_cancel(self._save_job)
+            self._save_job = None
         self.banner.hide()
         self.steps.set_active(2)
         self.btn_add.pack(side="right")
@@ -226,12 +235,16 @@ class ConferenceView(ctk.CTkFrame):
             self._stop.set()
 
     def _on_known(self, photos: list[Photo]) -> None:
+        if self._destroyed:
+            return
         if self._replace:
             self._batch = Batch(photos)  # photos no longer in entrada/ are dropped (R3)
             self._schedule_save()
         self._render()
 
     def _on_photo(self, photo: Photo, done: int, total: int) -> None:
+        if self._destroyed:
+            return
         self._batch.add(photo)
         self.btn_folder.configure(text=self._folder_label(f"lendo {done} de {total}"))
         self._schedule_save()
@@ -239,6 +252,8 @@ class ConferenceView(ctk.CTkFrame):
             self._render_job = self.after(_RENDER_INTERVAL_MS, self._render)
 
     def _on_loaded(self, ocr_unavailable: bool, finished: bool) -> None:
+        if self._destroyed:
+            return
         self._loading = False
         self.btn_folder.configure(state="normal")
         restore_button(self.btn_add, self._add_style)
@@ -256,7 +271,8 @@ class ConferenceView(ctk.CTkFrame):
         if self._render_job is not None:
             self.after_cancel(self._render_job)
             self._render_job = None
-        self.list.show(self._batch.rows(), _EMPTY_LIST)
+        # On a first open nothing is known yet: the list waits for the first photo instead of calling it empty.
+        self.list.show(self._batch.rows(), _READING if self._loading else _EMPTY_LIST)
         self.bottom.update_summary(self._batch.summary())
         if not self._loading and self._work is not None:
             count = len(self._batch)
@@ -268,6 +284,8 @@ class ConferenceView(ctk.CTkFrame):
 
     def _schedule_save(self) -> None:
         """Several changes in a row are written once, 500 ms after the last one."""
+        if self._destroyed:
+            return
         self._dirty = True
         if self._save_job is not None:
             self.after_cancel(self._save_job)
@@ -288,6 +306,8 @@ class ConferenceView(ctk.CTkFrame):
             self.banner.show(Tone.WARNING, _SAVE_FAILED)
             return
         self._dirty = False
+        if self.banner.visible and self.banner.text == _SAVE_FAILED:
+            self.banner.hide()  # saved now: the warning would no longer be true
 
     def destroy(self) -> None:
         """Voltar, Sair or the old flow: the load stops and what was reviewed is saved."""
@@ -297,4 +317,5 @@ class ConferenceView(ctk.CTkFrame):
             self._render_job = None
         self._top.unbind("<FocusIn>", self._focus_binding)
         self._save()
+        self._destroyed = True
         super().destroy()
