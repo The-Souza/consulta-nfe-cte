@@ -15,6 +15,7 @@ from utils.status import Tone
 
 # (id, heading, width, anchor, stretch)
 _COLUMNS = [
+    ("n",      "Nº",      56,  "center", False),  # position in the filter, as in the search table
     ("nfe",    "NF-E",    110, "w", False),
     ("file",   "ARQUIVO", 260, "w", True),
     ("date",   "DATA",    70,  "w", False),
@@ -109,7 +110,7 @@ class PhotoList(ctk.CTkFrame):
             if tone in _HIGHLIGHT:
                 tags.append(tone.value)
             self._tree.insert("", "end", iid=photo.name, image=self._boxes[photo.name in checked],
-                              values=row_values(photo, status), tags=tuple(tags))
+                              values=(index + 1, *row_values(photo, status)), tags=tuple(tags))
         self._tree.yview_moveto(top)
         self._tree.heading("#0", image=self._boxes[bool(rows) and all(p.name in checked for p, _ in rows)])
         if rows:
