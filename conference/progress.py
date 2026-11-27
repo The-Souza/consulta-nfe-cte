@@ -134,9 +134,7 @@ def _typed_by_user(photo: Photo) -> bool:
     return photo.nfe_source == "typed" or photo.typed_date is not None or photo.confirmed
 
 
-def reconcile(
-    saved: dict[str, Photo], files: Iterable[Path], confirmed_now: bool = False,
-) -> tuple[list[Photo], list[Path]]:
+def reconcile(saved: dict[str, Photo], files: Iterable[Path]) -> tuple[list[Photo], list[Path]]:
     """Splits the photos in entrada/ into those whose saved progress still holds (same content) and those to
     read again (new or changed). Saved photos no longer in the folder are dropped.
 
@@ -145,9 +143,9 @@ def reconcile(
     - one that cannot be hashed now (held by an antivirus or a sync client): checked again on the next open;
     - one saved without a hash (its first hash failed) that the user already worked on: it gets its hash now.
 
-    Their confirmation is asked again (one Enter), unless `confirmed_now`: the review comes from the screen,
-    where the user confirmed it with the image in front of them, and not from the file on disk. The photos
-    given are updated in place, so the caller passes copies of anything still on screen.
+    Their confirmation is always asked again (one Enter): the image may have been replaced (a held file may be
+    the new one being written), and a photo is never left ready to send without being seen. The photos given
+    are updated in place, so the caller passes copies of anything still on screen.
 
     One removed after the listing goes to reading, where it is reported on its own.
     """
@@ -173,8 +171,6 @@ def reconcile(
             continue
         if current is not None:
             photo.file_hash = current
-        if not confirmed_now:
-            # It may be held because a new image is replacing it.
-            photo.confirmed = False
+        photo.confirmed = False
         reuse.append(photo)
     return reuse, read

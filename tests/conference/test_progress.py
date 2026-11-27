@@ -176,13 +176,6 @@ class TestReconcile:
         reuse, _ = reconcile(saved, [held])
         assert reuse[0].confirmed is False
 
-    def test_in_the_session_a_held_photo_keeps_the_confirmation_just_given(self, held):
-        """The review on screen was confirmed with the image in front of the user: only a file read from disk
-        is asked again."""
-        saved = {"held.jpg": Photo(name="held.jpg", file_hash="h", nfe=123, confirmed=True)}
-        reuse, _ = reconcile(saved, [held], confirmed_now=True)
-        assert reuse[0].confirmed is True
-
     def test_a_photo_saved_without_hash_keeps_what_the_user_typed_and_gets_its_hash(self, tmp_path):
         """Its first hash failed (an antivirus scanning the new copy): a later load must not read it from
         scratch over the typed number and date."""
@@ -192,12 +185,6 @@ class TestReconcile:
         reuse, read = reconcile(saved, [path])
         assert read == [] and reuse[0].file_hash == file_hash(path)
         assert (reuse[0].nfe, reuse[0].typed_date, reuse[0].confirmed) == (55, date(2026, 11, 20), False)
-
-    def test_in_the_session_a_photo_saved_without_hash_stays_confirmed(self, tmp_path):
-        path = put(tmp_path, "a.jpg", b"photo")
-        saved = {"a.jpg": Photo(name="a.jpg", file_hash="", nfe=55, nfe_source="typed", confirmed=True)}
-        reuse, _ = reconcile(saved, [path], confirmed_now=True)
-        assert reuse[0].confirmed is True
 
     def test_a_photo_saved_without_hash_and_untouched_is_read_again(self, tmp_path):
         """Nothing typed to lose: reading it again gives its number another chance."""

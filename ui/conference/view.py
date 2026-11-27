@@ -197,11 +197,11 @@ class ConferenceView(ctk.CTkFrame):
     # LOADING
     # ------------------------------------------------------------------
 
-    def _read_folder(self, saved: dict[str, Photo], confirmed_now: bool = False) -> None:
+    def _read_folder(self, saved: dict[str, Photo]) -> None:
         """Reads entrada/ again: saved photos that did not change are kept, the rest is read (R2, R3)."""
         files = self._work.inputs()
         self._load_snapshot = snapshot(files)
-        self._load(files, saved, replace=True, confirmed_now=confirmed_now)
+        self._load(files, saved, replace=True)
 
     def _on_focus(self, _event=None) -> None:
         if self._work is None or self._loading:
@@ -211,9 +211,8 @@ class ConferenceView(ctk.CTkFrame):
             return
         files = self._work.inputs()
         if snapshot(files) != self._snapshot:
-            # Copies: the worker updates them on its thread, while the user keeps working on the ones on screen.
-            saved = {photo.name: dataclasses.replace(photo) for photo in self._batch.visible()}
-            self._read_folder(saved, confirmed_now=True)
+            # Copies: reconcile updates them on the worker thread, never the photos on screen.
+            self._read_folder({photo.name: dataclasses.replace(photo) for photo in self._batch.visible()})
 
     def _add_photos(self) -> None:
         if self._loading or self._work is None:
@@ -232,7 +231,7 @@ class ConferenceView(ctk.CTkFrame):
             self._added = copied
             self._load(copied, {}, replace=False)
 
-    def _load(self, files: Sequence[Path], saved: dict[str, Photo], replace: bool, confirmed_now: bool = False) -> None:
+    def _load(self, files: Sequence[Path], saved: dict[str, Photo], replace: bool) -> None:
         self._loading = True
         self._replace = replace
         self._stop = threading.Event()
@@ -243,7 +242,6 @@ class ConferenceView(ctk.CTkFrame):
             on_known=self._on_known, on_photo=self._on_photo,
             on_done=lambda ocr_unavailable: self._on_loaded(ocr_unavailable, finished=True),
             on_cancel=lambda ocr_unavailable: self._on_loaded(ocr_unavailable, finished=False),
-            confirmed_now=confirmed_now,
         )
         threading.Thread(target=worker.run, daemon=True).start()
         self._cancelled = False
