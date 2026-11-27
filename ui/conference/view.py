@@ -205,6 +205,9 @@ class ConferenceView(ctk.CTkFrame):
     def _on_focus(self, _event=None) -> None:
         if self._work is None or self._loading:
             return
+        if not self._work.inputs_dir.is_dir():
+            # Gone for a moment (deleted, drive away): reloading would empty the review and save it empty.
+            return
         files = self._work.inputs()
         if snapshot(files) != self._snapshot:
             self._read_folder({photo.name: photo for photo in self._batch.visible()})
@@ -284,6 +287,9 @@ class ConferenceView(ctk.CTkFrame):
         if ocr_unavailable:
             self.banner.show(Tone.WARNING, _OCR_MISSING)
         self._render()
+        if finished:
+            # Photos dropped in entrada/ during the load: the focus came back while it ran and was ignored.
+            self._on_focus()
 
     def _render(self) -> None:
         if self._render_job is not None:
