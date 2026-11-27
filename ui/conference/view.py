@@ -37,7 +37,10 @@ _OCR_MISSING = (
     "O OCR não está disponível: as fotos sem QR legível ficaram como “Não lida”. Confira a instalação do Tesseract."
 )
 _SAVE_FAILED = "Não foi possível salvar o andamento da conferência agora. Ele é salvo de novo na próxima mudança."
-_COPY_FAILED = "Não foi possível copiar as fotos para a pasta entrada."
+_SWITCH_BLOCKED = (
+    "Não foi possível salvar o andamento desta pasta, então a pasta não foi trocada. Tente de novo em instantes."
+)
+_COPY_FAILED ="Não foi possível copiar as fotos para a pasta entrada."
 
 
 def _prepared(root: Path) -> tuple[WorkFolder | None, str | None]:
@@ -147,7 +150,8 @@ class ConferenceView(ctk.CTkFrame):
             return
         self._save()  # what was reviewed in the previous folder
         if self._dirty:
-            # It could not be saved: switching now would lose it. The warning stays and the user tries again.
+            # It could not be saved: switching now would lose it. The user tries again in a moment.
+            self.banner.show(Tone.WARNING, _SWITCH_BLOCKED)
             return
         try:
             local_config.set_work_folder(root)
