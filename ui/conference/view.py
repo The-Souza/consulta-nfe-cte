@@ -31,6 +31,8 @@ _SAVE_DELAY_MS = 500
 _PHOTO_TYPES = [("Fotos", "*.jpg *.jpeg *.png")]
 _EMPTY_LIST = "Nenhuma foto na pasta entrada. Use “Adicionar fotos” ou jogue as fotos lá."
 _READING = "Lendo as fotos…"
+_CANCELLED_LIST = "Leitura cancelada."
+_CANCELLED = "Leitura cancelada. As fotos que faltaram são lidas ao abrir o Upload de novo."
 _OCR_MISSING = (
     "O OCR não está disponível: as fotos sem QR legível ficaram como “Não lida”. Confira a instalação do Tesseract."
 )
@@ -80,6 +82,7 @@ class ConferenceView(ctk.CTkFrame):
         self._add_style: dict = {}
         # Set on Voltar/Sair: worker callbacks already queued must not touch the gone widgets nor save again.
         self._destroyed = False
+        self._cancelled = False  # the last load was stopped by Cancelar
         make_topbar(self, "Upload de canhotos", user_name, on_logout, on_back=on_back)
         main = ctk.CTkFrame(self, fg_color=theme.TRANSPARENT)
         main.pack(fill="both", expand=True, padx=20, pady=(18, theme.SPACE_LG))
@@ -142,12 +145,15 @@ class ConferenceView(ctk.CTkFrame):
             else:
                 self.banner.show(Tone.WARNING, problem)
             return
+        self._save()  # what was reviewed in the previous folder
+        if self._dirty:
+            # It could not be saved: switching now would lose it. The warning stays and the user tries again.
+            return
         try:
             local_config.set_work_folder(root)
         except OSError:
             # The folder still works for now; it is asked again next time.
             logger.warning("Could not save the work folder %s", root, exc_info=True)
-        self._save()  # what was reviewed in the previous folder
         self._show_folder(work)
 
     def _show_empty(self, notice: str | None) -> None:
@@ -229,6 +235,11 @@ class ConferenceView(ctk.CTkFrame):
             on_cancel=lambda ocr_unavailable: self._on_loaded(ocr_unavailable, finished=False),
         )
         threading.Thread(target=worker.run, daemon=True).start()
+        self._cancelled = False
+        if self.banner.visible and self.banner.text == _CANCELLED:
+            self.banner.hide()
+        # Right away: after a folder switch the list must not keep the previous folder's photos while hashing.
+        self._render()
 
     def _cancel(self) -> None:
         if self._stop is not None:
@@ -257,12 +268,15 @@ class ConferenceView(ctk.CTkFrame):
         self._loading = False
         self.btn_folder.configure(state="normal")
         restore_button(self.btn_add, self._add_style)
-        if finished:
-            # A cancelled load leaves photos unread: the next focus reads them.
-            if self._replace:
-                self._snapshot = self._load_snapshot
-            else:
-                self._snapshot.update(snapshot(self._added))
+        # Also after Cancelar: the folder counts as seen, so a focus does not start again the read the user
+        # just stopped. The photos left unread are read when the Upload is opened again or the folder changes.
+        if self._replace:
+            self._snapshot = self._load_snapshot
+        else:
+            self._snapshot.update(snapshot(self._added))
+        self._cancelled = not finished
+        if self._cancelled:
+            self.banner.show(Tone.INFO, _CANCELLED)
         if ocr_unavailable:
             self.banner.show(Tone.WARNING, _OCR_MISSING)
         self._render()
@@ -272,7 +286,8 @@ class ConferenceView(ctk.CTkFrame):
             self.after_cancel(self._render_job)
             self._render_job = None
         # On a first open nothing is known yet: the list waits for the first photo instead of calling it empty.
-        self.list.show(self._batch.rows(), _READING if self._loading else _EMPTY_LIST)
+        empty = _READING if self._loading else _CANCELLED_LIST if self._cancelled else _EMPTY_LIST
+        self.list.show(self._batch.rows(), empty)
         self.bottom.update_summary(self._batch.summary())
         if not self._loading and self._work is not None:
             count = len(self._batch)
