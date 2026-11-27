@@ -40,6 +40,13 @@ def test_rows_pair_each_visible_photo_with_its_status_in_order():
         ("a.jpg", Status.DUPLICATE), ("b.jpg", Status.UNREAD), ("c.jpg", Status.DUPLICATE)]
 
 
+def test_rows_of_a_chip_keep_only_its_photos():
+    b = batch(p("a.jpg", nfe=1), p("b.jpg"), p("c.jpg", nfe=3, typed=D14), p("d.jpg", nfe=1))
+    assert [photo.name for photo, _ in b.rows(Chip.ATTENTION)] == ["a.jpg", "b.jpg", "d.jpg"]
+    assert [(photo.name, status) for photo, status in b.rows(Chip.TO_CHECK)] == [("c.jpg", Status.TO_CHECK)]
+    assert len(b.rows(Chip.ALL)) == 4
+
+
 class TestDuplicates:
     def test_same_invoice_on_two_photos(self):
         b = batch(p("a.jpg", 1), p("b.jpg", 1), p("c.jpg", 2), p("d.jpg"))

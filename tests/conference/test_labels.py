@@ -2,8 +2,8 @@ from datetime import date, datetime
 
 import pytest
 
-from conference.batch import Summary
-from conference.labels import row_values, send_label, status_tone, summary_parts
+from conference.batch import Chip, Summary
+from conference.labels import chip_tone, row_values, selection_label, send_label, status_tone, summary_parts
 from conference.photo import Photo, Status, SystemInfo
 from utils.status import Tone
 
@@ -60,6 +60,23 @@ class TestSummary:
     def test_many_dates_are_cut_after_four(self):
         dates = [NOV_14, NOV_15, NOV_16, NOV_17, NOV_18, date(2026, 11, 19)]
         assert summary_parts(Summary(6, dates, 0)) == ("6 prontas", " em 14/11, 15/11, 16/11, 17/11 e mais 2")
+
+
+class TestChipTone:
+    @pytest.mark.parametrize(("chip", "tone"), [
+        (Chip.ALL, None),
+        (Chip.ATTENTION, Tone.ERROR),
+        (Chip.NO_DATE, Tone.WARNING),
+        (Chip.TO_CHECK, Tone.INFO),
+        (Chip.READY, Tone.OK),
+    ])
+    def test_each_chip_has_the_design_dot(self, chip, tone):
+        assert chip_tone(chip) is tone
+
+
+@pytest.mark.parametrize(("count", "label"), [(1, "1 selecionada"), (3, "3 selecionadas")])
+def test_selection_label(count, label):
+    assert selection_label(count) == label
 
 
 class TestSendLabel:
