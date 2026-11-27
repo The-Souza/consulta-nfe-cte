@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import threading
 from collections.abc import Sequence
@@ -40,7 +41,7 @@ _SAVE_FAILED = "Não foi possível salvar o andamento da conferência agora. Ele
 _SWITCH_BLOCKED = (
     "Não foi possível salvar o andamento desta pasta, então a pasta não foi trocada. Tente de novo em instantes."
 )
-_COPY_FAILED ="Não foi possível copiar as fotos para a pasta entrada."
+_COPY_FAILED = "Não foi possível copiar as fotos para a pasta entrada."
 
 
 def _prepared(root: Path) -> tuple[WorkFolder | None, str | None]:
@@ -196,11 +197,11 @@ class ConferenceView(ctk.CTkFrame):
     # LOADING
     # ------------------------------------------------------------------
 
-    def _read_folder(self, saved: dict[str, Photo]) -> None:
+    def _read_folder(self, saved: dict[str, Photo], confirmed_now: bool = False) -> None:
         """Reads entrada/ again: saved photos that did not change are kept, the rest is read (R2, R3)."""
         files = self._work.inputs()
         self._load_snapshot = snapshot(files)
-        self._load(files, saved, replace=True)
+        self._load(files, saved, replace=True, confirmed_now=confirmed_now)
 
     def _on_focus(self, _event=None) -> None:
         if self._work is None or self._loading:
@@ -210,7 +211,9 @@ class ConferenceView(ctk.CTkFrame):
             return
         files = self._work.inputs()
         if snapshot(files) != self._snapshot:
-            self._read_folder({photo.name: photo for photo in self._batch.visible()})
+            # Copies: the worker updates them on its thread, while the user keeps working on the ones on screen.
+            saved = {photo.name: dataclasses.replace(photo) for photo in self._batch.visible()}
+            self._read_folder(saved, confirmed_now=True)
 
     def _add_photos(self) -> None:
         if self._loading or self._work is None:
@@ -229,7 +232,7 @@ class ConferenceView(ctk.CTkFrame):
             self._added = copied
             self._load(copied, {}, replace=False)
 
-    def _load(self, files: Sequence[Path], saved: dict[str, Photo], replace: bool) -> None:
+    def _load(self, files: Sequence[Path], saved: dict[str, Photo], replace: bool, confirmed_now: bool = False) -> None:
         self._loading = True
         self._replace = replace
         self._stop = threading.Event()
@@ -240,6 +243,7 @@ class ConferenceView(ctk.CTkFrame):
             on_known=self._on_known, on_photo=self._on_photo,
             on_done=lambda ocr_unavailable: self._on_loaded(ocr_unavailable, finished=True),
             on_cancel=lambda ocr_unavailable: self._on_loaded(ocr_unavailable, finished=False),
+            confirmed_now=confirmed_now,
         )
         threading.Thread(target=worker.run, daemon=True).start()
         self._cancelled = False
