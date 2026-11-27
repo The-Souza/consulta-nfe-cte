@@ -33,6 +33,7 @@ ICONS = [
     "rotate-cw",
     "search",
     "square",
+    "square-check",
     "upload",
     "wifi-off",
     "x",

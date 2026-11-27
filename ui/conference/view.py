@@ -10,10 +10,12 @@ import customtkinter as ctk
 
 import local_config
 from conference import progress
-from conference.batch import Batch
+from conference.batch import Batch, Chip
 from conference.folders import INPUT_FOLDER, WorkFolder, snapshot, work_root
+from conference.labels import chip_tone
 from conference.photo import Photo
 from ui import theme
+from ui.conference.batch_bar import BatchBar
 from ui.conference.bottom_bar import BottomBar
 from ui.conference.empty_state import EmptyState
 from ui.conference.photo_list import PhotoList
@@ -21,6 +23,7 @@ from ui.conference.steps import Steps
 from ui.icons import get_icon
 from ui.widgets.banner import Banner
 from ui.widgets.buttons import restore_button, show_cancel
+from ui.widgets.filter_chips import FilterChips
 from ui.widgets.topbar import make_topbar
 from ui.workers.load import LoadWorker
 from utils.status import Tone
@@ -87,6 +90,8 @@ class ConferenceView(ctk.CTkFrame):
         # Set on Voltar/Sair: worker callbacks already queued must not touch the gone widgets nor save again.
         self._destroyed = False
         self._cancelled = False  # the last load was stopped by Cancelar
+        self._chip = Chip.ALL
+        self._checked: set[str] = set()  # names of the selected photos, across filters (R8)
         make_topbar(self, "Upload de canhotos", user_name, on_logout, on_back=on_back)
         main = ctk.CTkFrame(self, fg_color=theme.TRANSPARENT)
         main.pack(fill="both", expand=True, padx=20, pady=(18, theme.SPACE_LG))
@@ -99,8 +104,17 @@ class ConferenceView(ctk.CTkFrame):
         self.card = ctk.CTkFrame(
             main, fg_color=theme.SURFACE, border_color=theme.BORDER, border_width=1, corner_radius=theme.RADIUS_CARD,
         )
-        self.list = PhotoList(self.card)
-        self.list.pack(fill="both", expand=True, padx=1, pady=theme.SPACE_SM)
+        self.chips = FilterChips(
+            self.card, on_pick=self._on_chip, chips=[(chip.name, chip.label) for chip in Chip],
+            dots={chip.name: chip_tone(chip) for chip in Chip if chip_tone(chip)}, title=None,
+        )
+        self.chips.pack(fill="x", padx=theme.SPACE_MD, pady=(theme.SPACE_MD, 10))
+        # Packed above the list only while photos are selected
+        self.batch_bar = BatchBar(
+            self.card, on_apply=self._apply_date, on_confirm=self._confirm_checked, on_clear=self._clear_checked,
+        )
+        self.list = PhotoList(self.card, on_toggle=self._toggle, on_toggle_all=self._toggle_all)
+        self.list.pack(fill="both", expand=True, padx=1, pady=(0, theme.SPACE_SM))
         # Photos dropped in entrada/ through the Explorer show up when the window gets the focus back.
         self._top = self.winfo_toplevel()
         self._focus_binding = self._top.bind("<FocusIn>", self._on_focus, add="+")
@@ -176,6 +190,9 @@ class ConferenceView(ctk.CTkFrame):
         self._work = work
         self._batch = Batch()
         self._snapshot = {}
+        self._chip = Chip.ALL
+        self.chips.set_active(Chip.ALL.name)
+        self._checked.clear()
         # A failed save of the previous folder must not carry over: saving the still empty batch would wipe
         # this folder's progress.
         self._dirty = False
@@ -297,13 +314,66 @@ class ConferenceView(ctk.CTkFrame):
         if self._render_job is not None:
             self.after_cancel(self._render_job)
             self._render_job = None
+        counts = self._batch.counts()
+        if self._chip is not Chip.ALL and not counts[self._chip]:
+            self._on_chip(Chip.ALL.name)  # e.g. the last photo of "Sem data" got a date
+            return
+        self.chips.set_counts({chip.name: count for chip, count in counts.items()})
+        self._checked &= {photo.name for photo in self._batch.visible()}  # photos gone from entrada/
         # On a first open nothing is known yet: the list waits for the first photo instead of calling it empty.
         empty = _READING if self._loading else _CANCELLED_LIST if self._cancelled else _EMPTY_LIST
-        self.list.show(self._batch.rows(), empty)
+        self.list.show(self._batch.rows(self._chip), empty, self._checked)
+        self._update_batch_bar()
         self.bottom.update_summary(self._batch.summary())
         if not self._loading and self._work is not None:
             count = len(self._batch)
             self.btn_folder.configure(text=self._folder_label(f"{count} foto" if count == 1 else f"{count} fotos"))
+
+    # ------------------------------------------------------------------
+    # FILTERS AND BATCH ACTIONS
+    # ------------------------------------------------------------------
+
+    def _on_chip(self, key: str) -> None:
+        self._chip = Chip[key]
+        self.chips.set_active(key)
+        self._render()
+
+    def _toggle(self, name: str) -> None:
+        self._checked ^= {name}
+        self._render()
+
+    def _toggle_all(self) -> None:
+        """The heading box: checks every row of the filter, or clears them when all are checked."""
+        shown = {photo.name for photo, _ in self._batch.rows(self._chip)}
+        if shown <= self._checked:
+            self._checked -= shown
+        else:
+            self._checked |= shown
+        self._render()
+
+    def _clear_checked(self) -> None:
+        self._checked.clear()
+        self._render()
+
+    def _update_batch_bar(self) -> None:
+        if not self._checked:
+            self.batch_bar.pack_forget()
+            return
+        self.batch_bar.update_selection(len(self._checked), self._batch.batch_dates())
+        if not self.batch_bar.winfo_manager():
+            self.batch_bar.pack(fill="x", padx=theme.SPACE_MD, pady=(0, 10), before=self.list)
+
+    def _apply_date(self, value) -> None:
+        """Skips the photos with a system date (R8): the portal's date always wins."""
+        if self._batch.apply_date(self._checked, value):
+            self._schedule_save()
+        self._render()
+
+    def _confirm_checked(self) -> None:
+        """Only the photos with an invoice number and a date are confirmed (R8)."""
+        if self._batch.confirm_many(self._checked):
+            self._schedule_save()
+        self._render()
 
     # ------------------------------------------------------------------
     # PROGRESS FILE
