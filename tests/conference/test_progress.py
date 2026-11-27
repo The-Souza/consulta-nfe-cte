@@ -166,8 +166,15 @@ class TestReconcile:
             "held.jpg": Photo(name="held.jpg", file_hash="h", nfe=123, nfe_source="typed", confirmed=True),
         }
         reuse, read = reconcile(saved, [held, ok])
-        assert reuse == [saved["held.jpg"], saved["ok.jpg"]] and read == []
+        assert [p.name for p in reuse] == ["held.jpg", "ok.jpg"] and read == []
+        assert (reuse[0].nfe, reuse[0].nfe_source) == (123, "typed")
         assert "held.jpg" in caplog.text
+
+    def test_a_photo_that_cannot_be_checked_now_must_be_confirmed_again(self, held):
+        """It may be held because a new image is replacing it: it is never left ready to send unverified."""
+        saved = {"held.jpg": Photo(name="held.jpg", file_hash="h", nfe=123, confirmed=True)}
+        reuse, _ = reconcile(saved, [held])
+        assert reuse[0].confirmed is False
 
     def test_a_new_photo_that_cannot_be_checked_now_goes_to_reading(self, held):
         assert reconcile({}, [held]) == ([], [held])

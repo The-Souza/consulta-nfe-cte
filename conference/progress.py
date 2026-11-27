@@ -134,8 +134,8 @@ def reconcile(saved: dict[str, Photo], files: Iterable[Path]) -> tuple[list[Phot
     """Splits the photos in entrada/ into those whose saved progress still holds (same content) and those to
     read again (new or changed). Saved photos no longer in the folder are dropped.
 
-    A saved photo that cannot be hashed now (held by an antivirus or a sync client) keeps its saved review and
-    is checked again on the next open: reading it again would throw away the typed number, date and
+    A saved photo that cannot be hashed now (held by an antivirus or a sync client) keeps its saved number and
+    date, unconfirmed, and is checked again on the next open: reading it again would throw away the typed number, date and
     confirmation. One removed after the listing goes to reading, where it is reported on its own.
     """
     reuse, read = [], []
@@ -147,6 +147,8 @@ def reconcile(saved: dict[str, Photo], files: Iterable[Path]) -> tuple[list[Phot
             unchanged = False
         except OSError as error:
             logger.warning("Could not check %s; its saved review is kept: %s", path.name, error)
+            # It may be held because a new image is replacing it: one Enter confirms it again.
+            photo.confirmed = False
             unchanged = True
         if unchanged:
             reuse.append(photo)
