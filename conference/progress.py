@@ -130,28 +130,51 @@ def save(folder: Path, photos: Iterable[Photo]) -> None:
     _hide(path)
 
 
-def reconcile(saved: dict[str, Photo], files: Iterable[Path]) -> tuple[list[Photo], list[Path]]:
+def _typed_by_user(photo: Photo) -> bool:
+    return photo.nfe_source == "typed" or photo.typed_date is not None or photo.confirmed
+
+
+def reconcile(
+    saved: dict[str, Photo], files: Iterable[Path], confirmed_now: bool = False,
+) -> tuple[list[Photo], list[Path]]:
     """Splits the photos in entrada/ into those whose saved progress still holds (same content) and those to
     read again (new or changed). Saved photos no longer in the folder are dropped.
 
-    A saved photo that cannot be hashed now (held by an antivirus or a sync client) keeps its saved number and
-    date, unconfirmed, and is checked again on the next open: reading it again would throw away the typed number, date and
-    confirmation. One removed after the listing goes to reading, where it is reported on its own.
+    Two saved photos keep their review although their content cannot be matched, because reading them again
+    would throw away the typed number, date and confirmation:
+    - one that cannot be hashed now (held by an antivirus or a sync client): checked again on the next open;
+    - one saved without a hash (its first hash failed) that the user already worked on: it gets its hash now.
+
+    Their confirmation is asked again (one Enter), unless `confirmed_now`: the review comes from the screen,
+    where the user confirmed it with the image in front of them, and not from the file on disk. The photos
+    given are updated in place, so the caller passes copies of anything still on screen.
+
+    One removed after the listing goes to reading, where it is reported on its own.
     """
     reuse, read = [], []
     for path in files:
         photo = saved.get(path.name)
+        if photo is None:
+            read.append(path)
+            continue
         try:
-            unchanged = photo is not None and photo.file_hash == file_hash(path)
+            current = file_hash(path)
         except FileNotFoundError:
-            unchanged = False
+            read.append(path)
+            continue
         except OSError as error:
             logger.warning("Could not check %s; its saved review is kept: %s", path.name, error)
-            # It may be held because a new image is replacing it: one Enter confirms it again.
-            photo.confirmed = False
-            unchanged = True
-        if unchanged:
+            current = None
+        if current == photo.file_hash:
             reuse.append(photo)
-        else:
-            read.append(path)
+            continue
+        if current is not None and (photo.file_hash or not _typed_by_user(photo)):
+            read.append(path)  # changed, or never worked on
+            continue
+        if current is not None:
+            photo.file_hash = current
+        if not confirmed_now:
+            # It may be held because a new image is replacing it.
+            photo.confirmed = False
+        reuse.append(photo)
     return reuse, read

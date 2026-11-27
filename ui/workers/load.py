@@ -46,7 +46,9 @@ class LoadWorker:
         on_photo: Callable[[Photo, int, int], None],
         on_done: Callable[[bool], None],
         on_cancel: Callable[[bool], None],
+        confirmed_now: bool = False,
     ):
+        self._confirmed_now = confirmed_now  # `saved` is the review on screen, not the file (see reconcile)
         self._files     = files
         self._saved     = saved
         self._stop      = stop_event
@@ -57,7 +59,7 @@ class LoadWorker:
         self._on_cancel = on_cancel
 
     def run(self) -> None:
-        known, to_read = reconcile(self._saved, self._files)
+        known, to_read = reconcile(self._saved, self._files, confirmed_now=self._confirmed_now)
         self._after(0, self._on_known, known)
         total = len(to_read)
         # Without Tesseract every photo with no readable QR comes back unread: on_done and on_cancel get it,

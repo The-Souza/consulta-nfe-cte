@@ -106,6 +106,22 @@ class TestReuse:
         ).run()
         assert order == ["known", "read"]
 
+    def test_a_session_reload_keeps_the_confirmation_of_a_held_photo(self, tmp_path, results, monkeypatch):
+        path = put(tmp_path, "a.jpg")
+
+        def held(_path):
+            raise PermissionError("held by another program")
+
+        monkeypatch.setattr("conference.progress.file_hash", held)
+        saved = {"a.jpg": Photo("a.jpg", "h", nfe=123, confirmed=True)}
+        known = []
+        LoadWorker(
+            files=[path], saved=saved, stop_event=threading.Event(), after_fn=lambda _delay, fn, *args: fn(*args),
+            on_known=known.extend, on_photo=lambda *_: None, on_done=lambda _ocr: None,
+            on_cancel=lambda _ocr: None, confirmed_now=True,
+        ).run()
+        assert known[0].confirmed is True
+
     def test_with_nothing_saved_the_known_list_is_empty(self, tmp_path, results):
         run = Run([put(tmp_path, "a.jpg")])
         assert run.known == [[]]
