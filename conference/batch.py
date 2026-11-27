@@ -89,10 +89,13 @@ class Batch:
         duplicated = self._duplicated_names()
         return {photo.name: status_of(photo, photo.name in duplicated) for photo in self.visible()}
 
-    def rows(self) -> list[tuple[Photo, Status]]:
-        """The visible photos with their status, in name order: the duplicates are worked out once."""
+    def rows(self, chip: Chip = Chip.ALL) -> list[tuple[Photo, Status]]:
+        """The visible photos of a chip with their status, in name order: the duplicates are worked out once."""
         statuses = self._statuses()
-        return [(photo, statuses[photo.name]) for photo in self.visible()]
+        return [
+            (photo, statuses[photo.name]) for photo in self.visible()
+            if chip is Chip.ALL or statuses[photo.name] in _CHIP_STATUSES[chip]
+        ]
 
     def filtered(self, chip: Chip) -> list[Photo]:
         if chip is Chip.ALL:

@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from functools import lru_cache
 from typing import Callable
 
@@ -42,23 +43,29 @@ def _dot(color: str) -> ctk.CTkImage:
 
 class FilterChips(ctk.CTkFrame):
     """'Filtrar:' followed by one pill per filter with its count. A chip with 0 is dimmed and can't be
-    picked; the active one is inverted. set_active(None) leaves none pressed (e.g. a CT-e filter)."""
+    picked; the active one is inverted. set_active(None) leaves none pressed (e.g. a CT-e filter).
 
-    def __init__(self, parent, on_pick: Callable[[str], None]):
+    The first chip is the "all" one, never dimmed. The defaults are the search chips."""
+
+    def __init__(self, parent, on_pick: Callable[[str], None],
+                 chips: Sequence[tuple[str, str]] = tuple((key, label) for key, label, _ in CHIPS),
+                 dots: dict[str, Tone] = _DOT_TONES, title: str | None = "Filtrar:"):
         super().__init__(parent, fg_color=theme.TRANSPARENT)
         self._on_pick = on_pick
-        self._labels = {key: label for key, label, _ in CHIPS}
+        self._labels = dict(chips)
+        self._all = chips[0][0]
         self._counts = {key: 0 for key in self._labels}
-        self._active: str | None = "all"
+        self._active: str | None = self._all
         self._shown: dict[str, tuple[str | None, str | None]] = {}  # key -> (text, state) on screen
         self._pinned: set[str] = set()  # chips with a fixed width (set on a state change)
 
-        ctk.CTkLabel(
-            self, text="Filtrar:", text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM),
-        ).pack(side="left", padx=(0, theme.SPACE_SM))
+        if title:
+            ctk.CTkLabel(
+                self, text=title, text_color=theme.TEXT_MUTED, font=theme.font(theme.FONT_SIZE_SM),
+            ).pack(side="left", padx=(0, theme.SPACE_SM))
         self._buttons: dict[str, ctk.CTkButton] = {}
         for key in self._labels:
-            tone = _DOT_TONES.get(key)
+            tone = dots.get(key)
             button = ctk.CTkButton(
                 self, text="", width=0, height=30, corner_radius=15, border_width=1,
                 font=theme.font(theme.FONT_SIZE_BODY), compound="left",
@@ -78,7 +85,7 @@ class FilterChips(ctk.CTkFrame):
         self._render()
 
     def _pick(self, key: str) -> None:
-        if self._counts.get(key, 0) or key == "all":
+        if self._counts.get(key, 0) or key == self._all:
             self._on_pick(key)
 
     def _render(self) -> None:
@@ -89,7 +96,7 @@ class FilterChips(ctk.CTkFrame):
             text = f"{self._labels[key]}   {count}"
             if key == self._active:
                 state = "active"
-            elif count == 0 and key != "all":
+            elif count == 0 and key != self._all:
                 state = "empty"
             else:
                 state = "normal"

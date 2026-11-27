@@ -1,6 +1,6 @@
 """Texts of the review screen that depend on the photos (the UI only draws them)."""
 
-from conference.batch import Summary
+from conference.batch import Chip, Summary
 from conference.dates import short
 from conference.names import shorten_middle
 from conference.photo import Photo, Status
@@ -18,6 +18,23 @@ _TONES = {
     Status.READY: Tone.OK,
     Status.DISCARDED: Tone.NEUTRAL,
 }
+
+
+# The dot of each chip, in the color of the statuses it shows; "Todas" has none.
+_CHIP_TONES = {
+    Chip.ATTENTION: Tone.ERROR,
+    Chip.NO_DATE: Tone.WARNING,
+    Chip.TO_CHECK: Tone.INFO,
+    Chip.READY: Tone.OK,
+}
+
+
+def chip_tone(chip: Chip) -> Tone | None:
+    return _CHIP_TONES.get(chip)
+
+
+def selection_label(count: int) -> str:
+    return _plural(count, "selecionada", "selecionadas")
 
 
 def row_values(photo: Photo, status: Status) -> tuple[str, str, str, str]:
